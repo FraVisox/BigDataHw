@@ -16,7 +16,7 @@ import java.util.*;
 
 public class WordCountExample{
 
-  public static void main(String[] args) throws IOException {
+  public static void main(String[] args) {
 
     // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
     // CHECKING NUMBER OF CMD LINE PARAMETERS (see assumptions)
