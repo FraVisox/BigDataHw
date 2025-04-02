@@ -6,8 +6,8 @@ Repository for the Big Data Computing Homeworks. Group 36
 ## Structure of the project
 
 - Folder `datasets` contains the datasets used
-- Folder `src/HisFiles` contains the `WordCountExample.java` file, which can be used to test the settings
-- Folder `src/BigDataHw` contains the files of the various homeworks, each one with a `README.md` file
+- Folder `src/HisFiles/` contains the `WordCountExample.java` file, which can be used to test the settings
+- Folder `src/Homeworks/` contains the files of the various homeworks, each one with a `README.md` file that explains the task
 
 ## Compile and run in Intellij
 
