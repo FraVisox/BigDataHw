@@ -1,6 +1,5 @@
 package Homeworks.Homework_1;
 
-import algebra.lattice.Bool;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -10,10 +9,10 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vectors;
-import scala.Array;
 import scala.Tuple2;
 import org.apache.spark.mllib.linalg.Vector;
 
+import java.util.Comparator;
 import java.util.Map;
 
 
@@ -81,7 +80,7 @@ public class G36HW1 {
         // SETTING GLOBAL VARIABLES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        long N, NA = 0, NB = 0;
+        long N, NA, NB;
         //TODO: calculate and store NA and NB and print them
         N = inputPoints.count(); //With this we are storing the RDD
 
@@ -104,9 +103,9 @@ public class G36HW1 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         double standardObjective = MRComputeStandardObjective(inputPoints, clusters.clusterCenters());
-        double fairObjective = MRComputeFairObjective(inputPoints, clusters.clusterCenters());
-        System.out.println("Delta(U,C) = "+standardObjective);
-        System.out.println("Phi(A,B,C) = "+fairObjective);
+        double fairObjective = MRComputeFairObjective(inputPoints, clusters.clusterCenters(), NA, NB);
+        System.out.printf("Delta(U,C) %.6f \n", standardObjective);
+        System.out.printf("Phi(A,B,C) = %.6f \n", fairObjective);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // CALL MRPRINTSTATISTICS
@@ -119,12 +118,31 @@ public class G36HW1 {
         return 0.0;
     }
 
-    public static double MRComputeFairObjective(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
-        return 0.0;
+    public static double MRComputeFairObjective(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids, long NA, long NB) { //Input is an RDD and set of centroids
+        //Given a point, we need to:
+        // * compute the closest centroid => get a pair (group, distance)
+        // * compute for every group the (group, mean)
+        // * take the max over the 2 groups
+        if (centroids.length == 0)
+            return 0;
+        double ans = rdd.mapToPair(x -> {
+            double min_dist = Vectors.sqdist(x._2, centroids[0]); //Suppose there is at least one centroid
+            for (int i = 1; i < centroids.length; i++) {
+                min_dist = Math.min(min_dist, Vectors.sqdist(x._2, centroids[i]));
+            }
+            //In min_dist we will find the distance from the point to its closest center
+            //TODO: is this right? We won't obtain the right number as it uses k-means++ under the hood
+            return new Tuple2<>(x._1, min_dist*min_dist);
+        }).reduceByKey(Double::sum).map(
+                x -> {
+                    if (x._1)
+                        return x._2/NA;
+                    return x._2/NB;
+                }).reduce(Math::max);
+        return ans;
     }
 
     public static void MRPrintStatistics(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
-
     }
 
 }
