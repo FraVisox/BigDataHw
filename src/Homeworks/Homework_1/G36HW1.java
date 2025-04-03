@@ -158,7 +158,7 @@ public class G36HW1 {
                     }
                     return new Tuple2<>(x._2, new double[] {min_dist, 1});
                 })
-                //reduce
+                //reduce by key itself uses partitions
                 .reduceByKey((x,y) -> {
                     return new double[] {x[0]+y[0], x[1]+y[1]};
                 })
@@ -212,7 +212,7 @@ public class G36HW1 {
         start = System.nanoTime();
         double ans3 = rdd
                 //ROUND 1:
-                //map
+                //map 1
                 .mapToPair(x -> {
                         //Compute minimum squared distance -> (group, distance): O(1) local memory
                         double min_dist = Vectors.sqdist(x._1, centroids[0]);
@@ -221,7 +221,7 @@ public class G36HW1 {
                         }
                         return new Tuple2<>(x._2, min_dist);
                     })
-                //reduce
+                //reduce 1
                 .mapPartitionsToPair(
                     //In every partition, get sum and N
                     (x) -> {
@@ -245,8 +245,9 @@ public class G36HW1 {
                         return pairs.iterator();
                     })
                 //ROUND 2:
-                //reduce
+                //shuffle 2
                 .groupByKey()
+                //reduce 2
                 .map((it) -> {
                     //Finally, get the total mean
                     double sum = 0;
@@ -255,10 +256,10 @@ public class G36HW1 {
                         sum += el[0];
                         N += el[1];
                     }
-                    return sum/N;
+                    return sum/N; //We don't even use a key, as Spark will do that for us
                 })
                 //ROUND 3:
-                //reduce
+                //reduce 3
                 .reduce(Math::max);
 
         end = System.nanoTime();
