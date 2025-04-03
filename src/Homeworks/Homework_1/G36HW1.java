@@ -85,13 +85,12 @@ public class G36HW1 {
         // SETTING GLOBAL VARIABLES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        long N, NA = 782, NB = 230;
-        //TODO: calculate and store NA and NB and print them
+        long N, NA, NB;
         N = inputPoints.count(); //With this we are storing the RDD
 
-        //Map<Boolean, Long> counts = inputPoints.countByKey();
-        //NA = counts.get(true);
-        //NB = counts.get(false);
+        Map<Boolean, Long> counts = inputPoints.mapToPair((x) -> new Tuple2<>(x._2, x._1)).countByKey();
+        NA = counts.get(true);
+        NB = counts.get(false);
 
         System.out.println("N = "+N+", NA = "+NA+", NB = "+NB);
 
