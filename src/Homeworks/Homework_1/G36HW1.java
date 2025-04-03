@@ -1,5 +1,6 @@
 package Homeworks.Homework_1;
 
+import org.apache.hadoop.shaded.org.checkerframework.checker.units.qual.K;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -8,11 +9,15 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
+import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.sparkproject.dmg.pmml.True;
 import scala.Tuple2;
 import org.apache.spark.mllib.linalg.Vector;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Map;
 
 
@@ -63,13 +68,13 @@ public class G36HW1 {
         JavaRDD<String> data = sc.textFile(args[0]).repartition(L);
 
         //This should be done locally
-        JavaPairRDD<Boolean, Vector> inputPoints = data.mapToPair((x) -> {
+        JavaPairRDD<Vector, Boolean> inputPoints = data.mapToPair((x) -> {
             String[] point = x.split(",");
             double[] values = new double[point.length-1];
             for (int i = 0; i< point.length-1; i++) {
                 values[i] = Double.parseDouble(point[i]);
             }
-            return new Tuple2<Boolean, Vector>(point[point.length-1].equals("A"), Vectors.dense(values));
+            return new Tuple2<>(Vectors.dense(values), point[point.length-1].equals("A"));
         }).cache();
         // textFile read the file and transforms it into an RDD of strings (elements = lines).
         // Repartition forces spark to partition in L groups (at random).
@@ -80,13 +85,13 @@ public class G36HW1 {
         // SETTING GLOBAL VARIABLES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        long N, NA, NB;
+        long N, NA = 782, NB = 230;
         //TODO: calculate and store NA and NB and print them
         N = inputPoints.count(); //With this we are storing the RDD
 
-        Map<Boolean, Long> counts = inputPoints.countByKey();
-        NA = counts.get(true);
-        NB = counts.get(false);
+        //Map<Boolean, Long> counts = inputPoints.countByKey();
+        //NA = counts.get(true);
+        //NB = counts.get(false);
 
         System.out.println("N = "+N+", NA = "+NA+", NB = "+NB);
 
@@ -95,16 +100,25 @@ public class G36HW1 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         //TODO: invoke the built-in Lloyd's algorithm with M iterations and K clusters. IS IT RIGHT?
-        KMeansModel clusters = KMeans.train(inputPoints.map(x -> x._2).rdd(), K, M);
+        KMeansModel clusters = KMeans.train(inputPoints.map(x -> x._1).rdd(), K, M);
+
+        //Vector[] centers = clusters.clusterCenters();
+
+        Vector[] centers = new Vector[] {
+                new DenseVector(new double[]{40.749035, -73.984431}),
+                new DenseVector(new double[]{40.873440,-74.192170}),
+                new DenseVector(new double[]{40.693363,-74.178147}),
+                new DenseVector(new double[]{40.746095,-73.830627})
+        };
 
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // CALL OBJECTIVE FUNCTIONS
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        double standardObjective = MRComputeStandardObjective(inputPoints, clusters.clusterCenters());
-        double fairObjective = MRComputeFairObjective(inputPoints, clusters.clusterCenters(), NA, NB);
-        System.out.printf("Delta(U,C) %.6f \n", standardObjective);
+        double standardObjective = MRComputeStandardObjective(inputPoints, centers);
+        double fairObjective = MRComputeFairObjective(inputPoints, centers, NA, NB);
+        System.out.printf("Delta(U,C) = %.6f \n", standardObjective/N);
         System.out.printf("Phi(A,B,C) = %.6f \n", fairObjective);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -114,35 +128,121 @@ public class G36HW1 {
         MRPrintStatistics(inputPoints, clusters.clusterCenters());
     }
 
-    public static double MRComputeStandardObjective(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
+    public static double MRComputeStandardObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
         return 0.0;
     }
 
-    public static double MRComputeFairObjective(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids, long NA, long NB) { //Input is an RDD and set of centroids
-        //Given a point, we need to:
-        // * compute the closest centroid => get a pair (group, distance)
-        // * compute for every group the (group, mean)
-        // * take the max over the 2 groups
+    public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids, long NA, long NB) { //Input is an RDD and set of centroids
+        //Passages:
+            //ROUND 1:
+            // * (point, group) -> compute the closest centroid and squared distance -> (group, distance)
+            // * (group, distance) -> sum all the distances for every partition and take the mean -> (group, mean)
+            //ROUND 2:
+            // * empty
+            // * (group, mean) -> take the total mean on everything -> (mean)
+            //ROUND 3:
+            // * empty
+            // * (mean) -> take the max -> (max)
         if (centroids.length == 0)
             return 0;
+
+        //2 ROUNDS with reduce by key. Works but we don't know the value of NA and NB
+        long start = System.nanoTime();
         double ans = rdd.mapToPair(x -> {
-            double min_dist = Vectors.sqdist(x._2, centroids[0]); //Suppose there is at least one centroid
-            for (int i = 1; i < centroids.length; i++) {
-                min_dist = Math.min(min_dist, Vectors.sqdist(x._2, centroids[i]));
-            }
-            //In min_dist we will find the distance from the point to its closest center
-            //TODO: is this right? We won't obtain the right number as it uses k-means++ under the hood
-            return new Tuple2<>(x._1, min_dist*min_dist);
-        }).reduceByKey(Double::sum).map(
-                x -> {
-                    if (x._1)
-                        return x._2/NA;
-                    return x._2/NB;
+                    //Compute minimum squared distance -> (group, distance): O(N) local memory
+                    double min_dist = Vectors.sqdist(x._1, centroids[0]);
+                    for (int i = 1; i < centroids.length; i++) {
+                        min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
+                    }
+                    return new Tuple2<>(x._2, min_dist);
+                }).reduceByKey(Double::sum)     // <-- SHUFFLE+GROUPING
+                .map((it) -> { // <-- REDUCE PHASE (R2)
+                    if (it._1)
+                        return it._2/NA;
+                    return it._2/NB;
                 }).reduce(Math::max);
-        return ans;
+        long end = System.nanoTime();
+        System.out.println("Time: "+(end-start));
+
+        System.out.println("----------------------------------");
+
+        //2 ROUNDS without using the partitions
+        start = System.nanoTime();
+        double ans2 = rdd.mapToPair(x -> {
+                    //Compute minimum squared distance -> (group, distance): O(N) local memory
+                    double min_dist = Vectors.sqdist(x._1, centroids[0]);
+                    for (int i = 1; i < centroids.length; i++) {
+                        min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
+                    }
+                    return new Tuple2<>(x._2, min_dist);
+                }).groupByKey().mapValues(
+                        (it) -> {
+                            double sum = 0;
+                            long n = 0;
+                            for (double d : it) {
+                                sum += d;
+                                n++;
+                            }
+                            System.out.println(n);
+                            return sum/n;
+                        }
+                )// <-- SHUFFLE+GROUPING
+                .map((it) -> it._2).reduce(Math::max);
+
+        end = System.nanoTime();
+        System.out.println("Time: "+(end-start));
+        System.out.println("--------------------------");
+
+        //2 ROUNDS
+        start = System.nanoTime();
+        double ans3 = rdd.mapToPair(x -> {
+            //Compute minimum squared distance -> (group, distance): O(1) local memory
+            double min_dist = Vectors.sqdist(x._1, centroids[0]);
+            for (int i = 1; i < centroids.length; i++) {
+                min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
+            }
+            return new Tuple2<>(x._2, min_dist);
+        }).mapPartitionsToPair(
+                //In every partition, get sum and N
+                (x) -> {
+                    double sumA = 0;
+                    double sumB = 0;
+                    double nna = 0;
+                    double nnb = 0;
+                    while (x.hasNext()){
+                        Tuple2<Boolean, Double> tuple = x.next();
+                        if (tuple._1) {
+                            nna++;
+                            sumA += tuple._2;
+                        } else {
+                            nnb++;
+                            sumB += tuple._2;
+                        }
+                    }
+                    System.out.println("NA "+nna+" NB "+nnb);
+                    ArrayList<Tuple2<Boolean, Double[]>> pairs = new ArrayList<>(2);
+                    pairs.add(new Tuple2<Boolean, Double[]>(true, new Double[]{sumA, nna}));
+                    pairs.add(new Tuple2<Boolean, Double[]>(false, new Double[]{sumB, nnb}));
+                    return pairs.iterator();
+                }).groupByKey()     // <-- SHUFFLE+GROUPING
+                .map((it) -> { // <-- REDUCE PHASE (R2)
+                    //Finally, get the total mean
+                    double sum = 0;
+                    double N = 0;
+                    for (Double[] el : it._2) {
+                        sum += el[0];
+                        N += el[1];
+                    }
+                    System.out.println("N "+N);
+                    return sum/N;
+                }).reduce(Math::max);
+
+        end = System.nanoTime();
+        System.out.println("Time: "+(end-start));
+        return ans3;
     }
 
-    public static void MRPrintStatistics(JavaPairRDD<Boolean, Vector> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
+    public static void MRPrintStatistics(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
     }
 
 }
