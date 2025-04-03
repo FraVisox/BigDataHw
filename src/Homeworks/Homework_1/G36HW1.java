@@ -117,7 +117,7 @@ public class G36HW1 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         double standardObjective = MRComputeStandardObjective(inputPoints, centers);
-        double fairObjective = MRComputeFairObjective(inputPoints, centers, NA, NB);
+        double fairObjective = MRComputeFairObjective(inputPoints, centers);
         System.out.printf("Delta(U,C) = %.6f \n", standardObjective/N);
         System.out.printf("Phi(A,B,C) = %.6f \n", fairObjective);
 
@@ -132,11 +132,11 @@ public class G36HW1 {
         return 0.0;
     }
 
-    public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids, long NA, long NB) { //Input is an RDD and set of centroids
+    public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
         //Passages:
             //ROUND 1:
             // * (point, group) -> compute the closest centroid and squared distance -> (group, distance)
-            // * (group, distance) -> sum all the distances for every partition and take the mean -> (group, mean)
+            // * (group, distance) -> for every partition: sum all the distances and take the mean -> (group, mean)
             //ROUND 2:
             // * empty
             // * (group, mean) -> take the total mean on everything -> (mean)
@@ -146,21 +146,29 @@ public class G36HW1 {
         if (centroids.length == 0)
             return 0;
 
-        //2 ROUNDS with reduce by key. Works but we don't know the value of NA and NB
+        //2 ROUNDS with reduce by key
         long start = System.nanoTime();
-        double ans = rdd.mapToPair(x -> {
-                    //Compute minimum squared distance -> (group, distance): O(N) local memory
+        double ans = rdd
+                //ROUND 1
+                //map
+                .mapToPair(x -> {
                     double min_dist = Vectors.sqdist(x._1, centroids[0]);
                     for (int i = 1; i < centroids.length; i++) {
                         min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
                     }
-                    return new Tuple2<>(x._2, min_dist);
-                }).reduceByKey(Double::sum)     // <-- SHUFFLE+GROUPING
-                .map((it) -> { // <-- REDUCE PHASE (R2)
-                    if (it._1)
-                        return it._2/NA;
-                    return it._2/NB;
-                }).reduce(Math::max);
+                    return new Tuple2<>(x._2, new double[] {min_dist, 1});
+                })
+                //reduce
+                .reduceByKey((x,y) -> {
+                    return new double[] {x[0]+y[0], x[1]+y[1]};
+                })
+                //ROUND 2
+                //map
+                .map((it) -> {
+                    return it._2[0]/it._2[1];
+                })
+                //reduce
+                .reduce(Math::max);
         long end = System.nanoTime();
         System.out.println("Time: "+(end-start));
 
@@ -168,26 +176,33 @@ public class G36HW1 {
 
         //2 ROUNDS without using the partitions
         start = System.nanoTime();
-        double ans2 = rdd.mapToPair(x -> {
+        double ans2 = rdd
+                //ROUND 1:
+                //map
+                .mapToPair(x -> {
                     //Compute minimum squared distance -> (group, distance): O(N) local memory
                     double min_dist = Vectors.sqdist(x._1, centroids[0]);
                     for (int i = 1; i < centroids.length; i++) {
                         min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
                     }
                     return new Tuple2<>(x._2, min_dist);
-                }).groupByKey().mapValues(
+                })
+                //reduce
+                .groupByKey().map(
                         (it) -> {
+                            //O(N) space
                             double sum = 0;
                             long n = 0;
-                            for (double d : it) {
+                            for (double d : it._2) {
                                 sum += d;
                                 n++;
                             }
-                            System.out.println(n);
                             return sum/n;
                         }
-                )// <-- SHUFFLE+GROUPING
-                .map((it) -> it._2).reduce(Math::max);
+                )
+                //ROUND 2:
+                //reduce
+                .reduce(Math::max);
 
         end = System.nanoTime();
         System.out.println("Time: "+(end-start));
@@ -195,37 +210,44 @@ public class G36HW1 {
 
         //2 ROUNDS
         start = System.nanoTime();
-        double ans3 = rdd.mapToPair(x -> {
-            //Compute minimum squared distance -> (group, distance): O(1) local memory
-            double min_dist = Vectors.sqdist(x._1, centroids[0]);
-            for (int i = 1; i < centroids.length; i++) {
-                min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
-            }
-            return new Tuple2<>(x._2, min_dist);
-        }).mapPartitionsToPair(
-                //In every partition, get sum and N
-                (x) -> {
-                    double sumA = 0;
-                    double sumB = 0;
-                    double nna = 0;
-                    double nnb = 0;
-                    while (x.hasNext()){
-                        Tuple2<Boolean, Double> tuple = x.next();
-                        if (tuple._1) {
-                            nna++;
-                            sumA += tuple._2;
-                        } else {
-                            nnb++;
-                            sumB += tuple._2;
+        double ans3 = rdd
+                //ROUND 1:
+                //map
+                .mapToPair(x -> {
+                        //Compute minimum squared distance -> (group, distance): O(1) local memory
+                        double min_dist = Vectors.sqdist(x._1, centroids[0]);
+                        for (int i = 1; i < centroids.length; i++) {
+                            min_dist = Math.min(min_dist, Vectors.sqdist(x._1, centroids[i]));
                         }
-                    }
-                    System.out.println("NA "+nna+" NB "+nnb);
-                    ArrayList<Tuple2<Boolean, Double[]>> pairs = new ArrayList<>(2);
-                    pairs.add(new Tuple2<Boolean, Double[]>(true, new Double[]{sumA, nna}));
-                    pairs.add(new Tuple2<Boolean, Double[]>(false, new Double[]{sumB, nnb}));
-                    return pairs.iterator();
-                }).groupByKey()     // <-- SHUFFLE+GROUPING
-                .map((it) -> { // <-- REDUCE PHASE (R2)
+                        return new Tuple2<>(x._2, min_dist);
+                    })
+                //reduce
+                .mapPartitionsToPair(
+                    //In every partition, get sum and N
+                    (x) -> {
+                        double sumA = 0;
+                        double sumB = 0;
+                        double nna = 0;
+                        double nnb = 0;
+                        while (x.hasNext()){
+                            Tuple2<Boolean, Double> tuple = x.next();
+                            if (tuple._1) {
+                                nna++;
+                                sumA += tuple._2;
+                            } else {
+                                nnb++;
+                                sumB += tuple._2;
+                            }
+                        }
+                        ArrayList<Tuple2<Boolean, Double[]>> pairs = new ArrayList<>(2);
+                        pairs.add(new Tuple2<Boolean, Double[]>(true, new Double[]{sumA, nna}));
+                        pairs.add(new Tuple2<Boolean, Double[]>(false, new Double[]{sumB, nnb}));
+                        return pairs.iterator();
+                    })
+                //ROUND 2:
+                //reduce
+                .groupByKey()
+                .map((it) -> {
                     //Finally, get the total mean
                     double sum = 0;
                     double N = 0;
@@ -233,12 +255,16 @@ public class G36HW1 {
                         sum += el[0];
                         N += el[1];
                     }
-                    System.out.println("N "+N);
                     return sum/N;
-                }).reduce(Math::max);
+                })
+                //ROUND 3:
+                //reduce
+                .reduce(Math::max);
 
         end = System.nanoTime();
         System.out.println("Time: "+(end-start));
+
+        System.out.println("Ans "+ans+" Ans2 "+ans2+" Ans3 "+ans3);
         return ans3;
     }
 
