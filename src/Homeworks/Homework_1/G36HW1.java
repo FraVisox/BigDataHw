@@ -1,6 +1,5 @@
 package Homeworks.Homework_1;
 
-import org.apache.hadoop.shaded.org.checkerframework.checker.units.qual.K;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -9,16 +8,13 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
-import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
-import org.sparkproject.dmg.pmml.True;
 import scala.Tuple2;
 import org.apache.spark.mllib.linalg.Vector;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 public class G36HW1 {
@@ -101,14 +97,14 @@ public class G36HW1 {
         //TODO: invoke the built-in Lloyd's algorithm with M iterations and K clusters. IS IT RIGHT?
         KMeansModel clusters = KMeans.train(inputPoints.map(x -> x._1).rdd(), K, M);
 
-        //Vector[] centers = clusters.clusterCenters();
+        Vector[] centers = clusters.clusterCenters();
 
-        Vector[] centers = new Vector[] {
+        /*Vector[] centers = new Vector[] {
                 new DenseVector(new double[]{40.749035, -73.984431}),
                 new DenseVector(new double[]{40.873440,-74.192170}),
                 new DenseVector(new double[]{40.693363,-74.178147}),
                 new DenseVector(new double[]{40.746095,-73.830627})
-        };
+        };*/
 
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -269,6 +265,39 @@ public class G36HW1 {
     }
 
     public static void MRPrintStatistics(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
+		// TASK:
+		// Write a method/function MRPrintStatistics that takes in input the set U=A∪B and a set C of centroids,
+		// and computes and prints the triplets (ci,NAi,NBi), for 1≤i≤K=|C|
+		// where ci is the i-th centroid in C, and NAi,NBi are the numbers of points of A and B, respectively, in the cluster Ui centered in ci.
+		var out = rdd.mapToPair(x -> {
+				double min_dist = Vectors.sqdist(x._1, centroids[0]);
+				int index = 0;
+				for (int i = 1; i < centroids.length; i++) {
+					double d = Vectors.sqdist(x._1, centroids[i]);
+					if (d < min_dist) {
+						min_dist = d;
+						index = i;
+					}
+				}
+				int[] values = new int[2];
+				values[x._2 ? 1 : 0] = 1;
+				return new Tuple2<>(index, values);
+			})
+			.reduceByKey((x,y) -> {
+				return new int[] {x[0]+y[0], x[1]+y[1]};
+			})
+			.collect()
+			.stream()
+			.sorted((o1, o2) -> Integer.compare(o1._1, o2._1)) // sort by centroid index
+			.collect(Collectors.toList());
+
+		for (Tuple2<Integer, int[]> tuple : out) {
+			int i = tuple._1;
+			var ci = centroids[i].toArray();
+			int NAi = tuple._2[0];
+			int NBi = tuple._2[1];
+			System.out.printf("i = %d, center = (%.6f,%.6f), NA%d = %d, NB%d = %d\n", i, ci[0], ci[1], i, NAi, i, NBi);
+		}
     }
 
 }
