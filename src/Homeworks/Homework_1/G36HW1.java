@@ -130,8 +130,27 @@ public class G36HW1 {
         MRPrintStatistics(inputPoints, centers);
     }
 
-    public static double MRComputeStandardObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) { //Input is an RDD and set of centroids
-        return 0.0;
+    public static double MRComputeStandardObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) {
+        if (centroids.length == 0) {
+            return 0.0;
+        }
+
+        long count = rdd.count();
+
+        // Calculate the sum of squared distances
+        double sumOfSquaredDistances = rdd
+                .mapToPair(point -> {
+                    double minDist = Vectors.sqdist(point._1, centroids[0]);
+                    for (int i = 1; i < centroids.length; i++) {
+                        minDist = Math.min(minDist, Vectors.sqdist(point._1, centroids[i]));
+                    }
+                    return new Tuple2<>(1, minDist);
+                })
+                .reduceByKey(Double::sum)
+                .values()
+                .reduce(Double::sum);
+
+        return sumOfSquaredDistances / count;
     }
 
     public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) {
