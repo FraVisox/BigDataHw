@@ -9,8 +9,6 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vectors;
-import org.apache.spark.mllib.linalg.DenseVector;
-import org.apache.spark.sql.sources.In;
 import scala.Tuple2;
 import org.apache.spark.mllib.linalg.Vector;
 
@@ -257,9 +255,7 @@ public class G36HW1 {
 		// and computes and prints the triplets (ci,NAi,NBi), for 1≤i≤K=|C|
 		// where ci is the i-th centroid in C, and NAi,NBi are the numbers of points of A and B, respectively, in the cluster Ui centered in ci.
 
-        //TODO: decide which one is better and if it is needed to mantain the same order
-
-        long start = System.nanoTime();
+        //TODO: decide if it is needed to mantain the same order
 
         List<Tuple2<Integer, int[]>> out = rdd
                 //ROUND 1:
@@ -285,9 +281,6 @@ public class G36HW1 {
 			.sortByKey()
             .collect();
 
-        long end = System.nanoTime();
-        System.out.println("With sorting: "+(end-start));
-
         for (Tuple2<Integer, int[]> tuple : out) {
             int i = tuple._1;
             double[] ci = centroids[i].toArray();
@@ -296,10 +289,7 @@ public class G36HW1 {
             System.out.printf(Locale.ENGLISH, "i = %d, center = (%.6f,%.6f), NA%d = %d, NB%d = %d\n", i, ci[0], ci[1], i, NAi, i, NBi);
         }
 
-        System.out.println("----------------------------");
-
-        start = System.nanoTime();
-
+        /*
         List<Tuple2<Vector, int[]>> out1 = rdd
                 //ROUND 1:
                 // map: (point, group) -> (index_of_center, group)
@@ -323,9 +313,6 @@ public class G36HW1 {
                 })
                 .collect();
 
-        end = System.nanoTime();
-        System.out.println("Without sorting: "+(end-start));
-
         int i = 0;
         for (Tuple2<Vector, int[]> tuple : out1) {
             double[] ci = tuple._1.toArray();
@@ -334,6 +321,8 @@ public class G36HW1 {
             System.out.printf(Locale.ENGLISH, "i = %d, center = (%.6f,%.6f), NA%d = %d, NB%d = %d\n", i, ci[0], ci[1], i, NAi, i, NBi);
             i++;
         }
+
+         */
 
     }
 
