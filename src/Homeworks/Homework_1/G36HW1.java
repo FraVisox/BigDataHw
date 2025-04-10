@@ -6,10 +6,8 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
-import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
 import scala.Tuple2;
 import org.apache.spark.mllib.linalg.Vector;
@@ -84,12 +82,13 @@ public class G36HW1 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         long N, NA, NB;
-        N = inputPoints.count();
 
         //A simple map phase in which we invert the key and value and then use countByKey of Spark.
         Map<Boolean, Long> counts = inputPoints.mapToPair((x) -> new Tuple2<>(x._2, x._1)).countByKey();
         NA = counts.get(groupA);
         NB = counts.get(groupB);
+        //This is done to prevent from doing another useless round
+        N = NA+NB;
 
         System.out.println("N = "+N+", NA = "+NA+", NB = "+NB);
 
@@ -122,14 +121,19 @@ public class G36HW1 {
             return 0.0;
         }
 
+        //2 ROUNDS with reduceByKey
+        //Passages:
+        //ROUND 1:
+        // * (point, group) -> compute the closest centroid and squared distance -> (dummy_key, (min_distance,1))
+        // * (dummy_key, (min_distance,1)) -> for every partition: sum all the distances and the number of points -> (dummy_key, (sum_l, N_l))
+        //ROUND 2:
+        // * empty
+        // * (dummy_key, (sum_l, N_l)) ->  get the resulting sum and N -> (dummy_key, (sum, N))
+
         //Dummy key used in the MR algorithm
-        int dummy_key = 1;
+        final int dummy_key = 1;
 
-        //Get the number of points. This should be O(1) and not require any round.
-        long count = rdd.count();
-
-        //Calculate the sum of squared distances
-        double sumOfSquaredDistances = rdd
+        double[] ans = rdd
                 //ROUND 1
                 //map
                 .mapToPair(point -> {
@@ -137,13 +141,13 @@ public class G36HW1 {
                     for (int i = 1; i < centroids.length; i++) {
                         minDist = Math.min(minDist, Vectors.sqdist(point._1, centroids[i]));
                     }
-                    return new Tuple2<>(dummy_key, minDist);
+                    return new Tuple2<>(dummy_key, new double[] {minDist,1});
                 })
                 //reduce of Round 1 and Round 2
-                .reduceByKey(Double::sum)
+                .reduceByKey((x,y) -> new double[] {x[0]+y[0], x[1]+y[1]})
                 .first()._2;
 
-        return sumOfSquaredDistances/count;
+        return ans[0]/ans[1];
     }
 
     public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) {
@@ -158,7 +162,7 @@ public class G36HW1 {
         //ROUND 2:
         // * empty
         // * (group, sum_l, N_l) -> for every group, get the resulting sum and N -> (group, sum, N)
-        //ROUND 3: note that spark_dummy_key is a dummy key given implicitly by Spark
+        //ROUND 3: note that spark_dummy_key is a dummy key given implicitly by Spark. This could also be done without map reduce
         // * (group, sum, N) -> compute the mean -> (spark_dummy_key, mean)
         // * (spark_dummy_key, mean) -> take the max -> (spark_dummy_key, max)
 
@@ -174,9 +178,7 @@ public class G36HW1 {
                 })
                 //reduce of ROUND 1 and ROUND 2:
                 //reduceByKey itself uses partitions
-                .reduceByKey((x,y) -> {
-                    return new double[] {x[0]+y[0], x[1]+y[1]};
-                })
+                .reduceByKey((x,y) -> new double[] {x[0]+y[0], x[1]+y[1]})
                 //ROUND 3
                 //map
                 .map((it) ->
@@ -212,9 +214,7 @@ public class G36HW1 {
 				return new Tuple2<>(index, values);
 			})
             // reduce: for every index of centers we sum up all the points of the same group
-			.reduceByKey((x,y) -> {
-				return new int[] {x[0]+y[0], x[1]+y[1]};
-			})
+			.reduceByKey((x,y) -> new int[] {x[0]+y[0], x[1]+y[1]})
 			.sortByKey()
             .collect();
 
