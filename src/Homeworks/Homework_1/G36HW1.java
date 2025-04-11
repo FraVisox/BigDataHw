@@ -157,13 +157,13 @@ public class G36HW1 {
         //3 ROUNDS with reduceByKey
         //Passages:
         //ROUND 1:
-        // * (point, group) -> compute the closest centroid and squared distance -> (group, min_distance)
-        // * (group, min_distance) -> for every partition: sum all the distances and the number of points -> (group, sum_l, N_l)
+        // * (point, group) -> compute the closest centroid and squared distance -> (group, (min_distance, 1))
+        // * (group, (min_distance, 1)) -> for every partition: sum all the distances and the number of points -> (group, (sum_l, N_l))
         //ROUND 2:
         // * empty
-        // * (group, sum_l, N_l) -> for every group, get the resulting sum and N -> (group, sum, N)
-        //ROUND 3: note that spark_dummy_key is a dummy key given implicitly by Spark. This could also be done without map reduce
-        // * (group, sum, N) -> compute the mean -> (spark_dummy_key, mean)
+        // * (group, (sum_l, N_l)) -> for every group, get the resulting sum and N -> (group, (sum, N))
+        //ROUND 3: note that spark_dummy_key is a dummy key given implicitly by Spark. This round could also be done without map reduce
+        // * (group, (sum, N)) -> compute the mean -> (spark_dummy_key, mean)
         // * (spark_dummy_key, mean) -> take the max -> (spark_dummy_key, max)
 
         double ans = rdd
@@ -198,7 +198,7 @@ public class G36HW1 {
 
         List<Tuple2<Integer, int[]>> out = rdd
                 //ROUND 1:
-                // map: (point, group) -> (index_of_center, group)
+                // map: (point, group) -> (index_of_center, (1,0)) or (index_of_center, (0,1))
                 .mapToPair(x -> {
 				double min_dist = Vectors.sqdist(x._1, centroids[0]);
 				int index = 0;
