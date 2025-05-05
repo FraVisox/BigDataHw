@@ -6,13 +6,14 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.mllib.linalg.BLAS;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
 import scala.Tuple2;
+import scala.Tuple3;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -112,7 +113,7 @@ public class G36HW2 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         start = System.currentTimeMillis();
-        Vector[] c_fair = MRFairLloyd(inputPoints, K, M);
+        Vector[] c_fair = MRFairLloyd(inputPoints, NA, NB, K, M);
         end = System.currentTimeMillis();
 
         long c_fair_time = end-start;
@@ -149,11 +150,111 @@ public class G36HW2 {
 
     }
 
-    public static Vector[] MRFairLloyd(JavaPairRDD<Vector, Boolean> rdd, long K, long M) {
+	public static Vector add(Vector vec1, Vector vec2) {
+        if (vec1.size() != vec2.size()) throw new IllegalArgumentException("Vectors must have the same dimension");
+        double[] result = new double[vec1.size()];
+        for (int i = 0; i < vec1.size(); i++) {
+            result[i] = vec1.apply(i) + vec2.apply(i);
+        }
+        return Vectors.dense(result);
+    }
+
+    public static Vector[] MRFairLloyd(JavaPairRDD<Vector, Boolean> rdd, long NA, long NB, int K, int M) {
         //Initialize using kmeans||
+        KMeansModel clusters = KMeans.train(rdd.map(x -> x._1).rdd(), K, 0);
+        Vector[] centers = clusters.clusterCenters();
         //Executes M iterations of the loop
+		for (int iter = 0; iter < M; iter++) {
+			// assign each point to the closest center, O(nk)
+			JavaRDD<Tuple3<Vector, Boolean, Integer>> partitioned = rdd.map(pair -> {
+				Vector x = pair._1;
+				int c = -1;
+				double best_d = Double.POSITIVE_INFINITY;
+				for (int i = 0; i < K; i++) {
+					double d = Vectors.sqdist(x, centers[i]);
+					if (d < best_d) {
+						best_d = d;
+						c = i;
+					}
+				}
+				return new Tuple3<>(x, pair._2, c);
+			}); // TODO: cache this?
+			// for each group,parition compute the size of the intersection (group ∩ U_i)
+			var byGroupCluster = partitioned
+				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), t._1()));
+			var partSum = byGroupCluster
+				.reduceByKey((a, b) -> add(a, b))
+				.collectAsMap();
+			// for each group,parition compute the sum of points in the intersection
+			var partSize = partitioned
+				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), 1L))
+				.reduceByKey((a, b) -> a + b)
+				.collectAsMap();
+			// aggreagate relevant global statistics in O(k)
+			double[] alpha = new double[K], beta = new double[K];
+			Vector[] muA = new Vector[K], muB = new Vector[K];
+			double[] ell = new double[K];
+			for (int i = 0; i < K; i++) {
+				var keyA = new Tuple2<>(groupA, i);
+				var keyB = new Tuple2<>(groupB, i);
+				long sizeA = partSize.get(keyA), sizeB = partSize.get(keyB);
+				Vector sumA = partSum.get(keyA), sumB = partSum.get(keyB);
+				alpha[i] = (double) sizeA / NA;
+				beta[i] = (double) sizeB / NB;
+				BLAS.scal(1.0 / sizeA, sumA);
+				BLAS.scal(1.0 / sizeB, sumB);
+				muA[i] = sumA;
+				muB[i] = sumB;
+				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
+			}
+			// compute distance from centers, O(n)
+			var delta = byGroupCluster
+				.mapToPair(pair -> {
+					var group = pair._1._1;
+					var muGroup = group ? muA : muB;
+					var mu = muGroup[pair._1._2];
+					double d = Vectors.sqdist(pair._2, mu);
+					return new Tuple2<>(group, d);
+				})
+				.reduceByKey((a, b) -> a + b)
+				.collectAsMap();
+			double fixedA = delta.get(groupA) / NA;
+			double fixedB = delta.get(groupB) / NB;
+			// select next centroids, O(kT)
+			var xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
+			for (int i = 0; i < K; i++) {
+				double x = xs[i], l = ell[i];
+				Vector ma = muA[i], mb = muB[i];
+				BLAS.scal((l - x) / l, ma);
+				BLAS.scal(x / l, mb);
+				centers[i] = add(ma, mb);
+			}
+		}
         //Returns the set of C centroids
-        return null;
+        return centers;
+    }
+
+    public static double[] computeVectorX(double fixedA, double fixedB, double[] alpha, double[] beta, double[] ell, int K) {
+        double gamma = 0.5;
+        double[] xDist = new double[K];
+        double fA, fB;
+        double power = 0.5;
+        int T = 10;
+        for (int t=1; t<=T; t++){
+            fA = fixedA;
+            fB = fixedB;
+            power = power/2;
+            for (int i=0; i<K; i++) {
+                double temp = (1-gamma)*beta[i]*ell[i]/(gamma*alpha[i]+(1-gamma)*beta[i]);
+                xDist[i]=temp;
+                fA += alpha[i]*temp*temp;
+                temp=(ell[i]-temp);
+                fB += beta[i]*temp*temp;
+            }
+            if (fA == fB) {break;}
+            gamma = (fA > fB) ? gamma+power : gamma-power;
+        }
+        return xDist;
     }
 
     public static double MRComputeFairObjective(JavaPairRDD<Vector, Boolean> rdd, Vector[] centroids) {
