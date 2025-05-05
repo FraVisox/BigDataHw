@@ -142,6 +142,8 @@ public class G36HW2 {
 
         long fair_obj_time = end-start;
 
+        //TODO: output format
+
         System.out.printf(Locale.ENGLISH, "Phi(A,B,Cstand) = %.6f \n", standObjective);
         System.out.printf(Locale.ENGLISH, "Phi(A,B,Cfair) = %.6f \n", fairObjective);
 
@@ -185,13 +187,13 @@ public class G36HW2 {
 				return new Tuple3<>(x, pair._2, c);
 			}); // TODO: cache this?
 			// for each group,parition compute the size of the intersection (group ∩ U_i)
-			var byGroupCluster = partitioned
+			JavaPairRDD<Tuple2<Boolean,Integer>, Vector> byGroupCluster = partitioned
 				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), t._1()));
-			var partSum = byGroupCluster
-				.reduceByKey((a, b) -> add(a, b))
+			Map<Tuple2<Boolean, Integer>, Vector> partSum = byGroupCluster
+				.reduceByKey(G36HW2::add)
 				.collectAsMap();
 			// for each group,parition compute the sum of points in the intersection
-			var partSize = partitioned
+			Map<Tuple2<Boolean, Integer>, Long> partSize = partitioned
 				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), 1L))
 				.reduceByKey((a, b) -> a + b)
 				.collectAsMap();
@@ -200,8 +202,8 @@ public class G36HW2 {
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
 			for (int i = 0; i < K; i++) {
-				var keyA = new Tuple2<>(groupA, i);
-				var keyB = new Tuple2<>(groupB, i);
+				Tuple2<Boolean, Integer> keyA = new Tuple2<>(groupA, i);
+				Tuple2<Boolean, Integer> keyB = new Tuple2<>(groupB, i);
 				long sizeA = partSize.get(keyA), sizeB = partSize.get(keyB);
 				Vector sumA = partSum.get(keyA), sumB = partSum.get(keyB);
 				alpha[i] = (double) sizeA / NA;
@@ -213,20 +215,20 @@ public class G36HW2 {
 				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
 			}
 			// compute distance from centers, O(n)
-			var delta = byGroupCluster
+			Map<Boolean, Double> delta = byGroupCluster
 				.mapToPair(pair -> {
-					var group = pair._1._1;
-					var muGroup = group ? muA : muB;
-					var mu = muGroup[pair._1._2];
+					Boolean group = pair._1._1;
+					Vector[] muGroup = group ? muA : muB;
+					Vector mu = muGroup[pair._1._2];
 					double d = Vectors.sqdist(pair._2, mu);
 					return new Tuple2<>(group, d);
 				})
-				.reduceByKey((a, b) -> a + b)
+				.reduceByKey(Double::sum)
 				.collectAsMap();
 			double fixedA = delta.get(groupA) / NA;
 			double fixedB = delta.get(groupB) / NB;
 			// select next centroids, O(kT)
-			var xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
+			double[] xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
 			for (int i = 0; i < K; i++) {
 				double x = xs[i], l = ell[i];
 				Vector ma = muA[i], mb = muB[i];
@@ -278,7 +280,7 @@ public class G36HW2 {
         // * (group, (sum, N)) -> compute the mean -> (spark_dummy_key, mean)
         // * (spark_dummy_key, mean) -> take the max -> (spark_dummy_key, max)
 
-        double ans = rdd
+        return rdd
                 //ROUND 1
                 //map
                 .mapToPair(x -> {
@@ -298,8 +300,6 @@ public class G36HW2 {
                 )
                 //reduce
                 .reduce(Math::max);
-
-        return ans;
     }
 
 }
