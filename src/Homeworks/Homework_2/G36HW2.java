@@ -10,6 +10,7 @@ import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.rdd.RDD;
 import scala.Tuple2;
 
 import java.util.List;
@@ -85,12 +86,12 @@ public class G36HW2 {
 
         long N, NA, NB;
 
+        //This is done to store the input data so that time profiling is done in the right way
+        N = inputPoints.count();
         //A simple map phase in which we invert the key and value and then use countByKey of Spark.
         Map<Boolean, Long> counts = inputPoints.mapToPair((x) -> new Tuple2<>(x._2, x._1)).countByKey();
         NA = counts.get(groupA);
         NB = counts.get(groupB);
-        //This is done to prevent from doing another useless round
-        N = NA+NB;
 
         System.out.println("N = "+N+", NA = "+NA+", NB = "+NB);
 
@@ -99,9 +100,13 @@ public class G36HW2 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         long start, end;
 
-        //Invoke the algorithm only on the points, without the group and compute the centers
+        //First be sure that the RDD is stored: we don't want to count the time to take out only the points
+        RDD<Vector> onlyPoints = inputPoints.map(x -> x._1).rdd().cache();
+        onlyPoints.count();
+
+        //Invoke the algorithm only on the points, without the group and compute the centers (also this last part is measured).
         start = System.currentTimeMillis();
-        KMeansModel clusters = KMeans.train(inputPoints.map(x -> x._1).rdd(), K, M);
+        KMeansModel clusters = KMeans.train(onlyPoints, K, M);
         Vector[] c_stand = clusters.clusterCenters();
         end = System.currentTimeMillis();
 
@@ -111,6 +116,7 @@ public class G36HW2 {
         // FAIR LLOYD'S ALGORITHM INVOCATION
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
+        //Invoke our fair implementation: here inputPoints has already been stored since we counted N above
         start = System.currentTimeMillis();
         Vector[] c_fair = MRFairLloyd(inputPoints, K, M);
         end = System.currentTimeMillis();
@@ -121,12 +127,14 @@ public class G36HW2 {
         // FIND VALUES OF OBJECTIVE FUNCTIONS
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
+        //Here inputPoints has already been stored since we counted N above
         start = System.currentTimeMillis();
         double standObjective = MRComputeFairObjective(inputPoints, c_stand);
         end = System.currentTimeMillis();
 
         long stand_obj_time = end-start;
 
+        //Here inputPoints has already been stored since we counted N above
         start = System.currentTimeMillis();
         double fairObjective = MRComputeFairObjective(inputPoints, c_fair);
         end = System.currentTimeMillis();
@@ -140,13 +148,10 @@ public class G36HW2 {
         // PRINT RUNNING TIMES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        //TODO: measure in the right way, not with currentTimeMillis()
         System.out.printf(Locale.ENGLISH, "Cstand running time = %d \n", c_stand_time);
         System.out.printf(Locale.ENGLISH, "Cfair running time = %d \n", c_fair_time);
         System.out.printf(Locale.ENGLISH, "Stand obj running time = %d \n", stand_obj_time);
         System.out.printf(Locale.ENGLISH, "Fair obj running time = %d \n", fair_obj_time);
-
-
     }
 
     public static Vector[] MRFairLloyd(JavaPairRDD<Vector, Boolean> rdd, long K, long M) {
