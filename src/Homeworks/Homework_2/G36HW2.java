@@ -27,6 +27,18 @@ public class G36HW2 {
 
     public static void main(String[] args) {
 
+        /* EXAMPLE OF OUTPUT:
+
+        Input file = datasets/uber_small.csv, L = 1, K = 4, M = 20
+        N = 1012, NA = 782, NB = 230
+        Phi(A,B,Cstand) = 0.001935
+        Phi(A,B,Cfair) = 0.001815
+        Cstand running time = 678
+        Cfair running time = 2706
+        Stand obj running time = 35
+        Fair obj running time = 34
+         */
+
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // CHECKING NUMBER OF CMD LINE PARAMETERS.
         // Parameters are: <file_path>, num_partitions (L), num_centers (K), num_iterations (M)
@@ -151,10 +163,10 @@ public class G36HW2 {
         // PRINT RUNNING TIMES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        System.out.printf(Locale.ENGLISH, "Cstand running time = %d \n", c_stand_time);
-        System.out.printf(Locale.ENGLISH, "Cfair running time = %d \n", c_fair_time);
-        System.out.printf(Locale.ENGLISH, "Stand obj running time = %d \n", stand_obj_time);
-        System.out.printf(Locale.ENGLISH, "Fair obj running time = %d \n", fair_obj_time);
+        System.out.printf(Locale.ENGLISH, "Cstand running time in ms = %d \n", c_stand_time);
+        System.out.printf(Locale.ENGLISH, "Cfair running time in ms = %d \n", c_fair_time);
+        System.out.printf(Locale.ENGLISH, "Stand obj running time in ms = %d \n", stand_obj_time);
+        System.out.printf(Locale.ENGLISH, "Fair obj running time in ms = %d \n", fair_obj_time);
     }
 
 	public static Vector add(Vector vec1, Vector vec2) {
@@ -185,19 +197,23 @@ public class G36HW2 {
 					}
 				}
 				return new Tuple3<>(x, pair._2, c);
-			}); // TODO: cache this?
-			// for each group,parition compute the size of the intersection (group ∩ U_i)
+			}); // TODO: cache this? Probably if we put together the next ones (we could also do only one series of passes) then no
+
+            //TODO: maybe these 2 could be put together for efficiency, even if not so wow from a clarity POV
+			// for each group,partition compute the size of the intersection (group ∩ U_i)
 			JavaPairRDD<Tuple2<Boolean,Integer>, Vector> byGroupCluster = partitioned
 				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), t._1()));
 			Map<Tuple2<Boolean, Integer>, Vector> partSum = byGroupCluster
 				.reduceByKey(G36HW2::add)
 				.collectAsMap();
-			// for each group,parition compute the sum of points in the intersection
+			// for each group,partition compute the sum of points in the intersection
 			Map<Tuple2<Boolean, Integer>, Long> partSize = partitioned
 				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), 1L))
-				.reduceByKey((a, b) -> a + b)
+				.reduceByKey(Long::sum)
 				.collectAsMap();
-			// aggreagate relevant global statistics in O(k)
+
+
+			// aggregate relevant global statistics in O(k)
 			double[] alpha = new double[K], beta = new double[K];
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
@@ -214,6 +230,7 @@ public class G36HW2 {
 				muB[i] = sumB;
 				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
 			}
+
 			// compute distance from centers, O(n)
 			Map<Boolean, Double> delta = byGroupCluster
 				.mapToPair(pair -> {
@@ -227,6 +244,7 @@ public class G36HW2 {
 				.collectAsMap();
 			double fixedA = delta.get(groupA) / NA;
 			double fixedB = delta.get(groupB) / NB;
+
 			// select next centroids, O(kT)
 			double[] xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
 			for (int i = 0; i < K; i++) {
