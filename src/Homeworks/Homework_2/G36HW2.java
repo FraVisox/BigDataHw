@@ -211,8 +211,8 @@ public class G36HW2 {
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
 			for (int i = 0; i < K; i++) {
-				var statsA = groupStats.get(new Tuple2<>(groupA, i));
-				var statsB = groupStats.get(new Tuple2<>(groupB, i));
+				Tuple2<Long, Vector> statsA = groupStats.get(new Tuple2<>(groupA, i));
+				Tuple2<Long, Vector> statsB = groupStats.get(new Tuple2<>(groupB, i));
 				long sizeA = statsA._1, sizeB = statsB._1;
 				Vector sumA = statsA._2, sumB = statsB._2;
 				alpha[i] = (double) sizeA / NA;

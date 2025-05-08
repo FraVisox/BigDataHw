@@ -60,7 +60,14 @@ public class G36GEN {
         // GENERATE THE DATASET AND OUTPUT IT IN STANDARD OUTPUT
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        //TODO: find a way to generate
+        //TODO: find a way to generate N points in R^2 such that if used in G36HW2 they show a great difference between the distances
+
+
+    }
+
+    private static void printPoint(double[] coords, boolean group) {
+        // EXAMPLE OUTPUT: 40.7267,-74.0345,B
+        System.out.printf(Locale.ENGLISH, "%.4f,%.4f,%c\n", coords[0], coords[1], group == groupA ? 'A' : 'B');
     }
 
 }
