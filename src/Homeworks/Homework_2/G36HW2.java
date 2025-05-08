@@ -29,14 +29,14 @@ public class G36HW2 {
 
         /* EXAMPLE OF OUTPUT:
 
-        Input file = datasets/uber_small.csv, L = 1, K = 4, M = 20
-        N = 1012, NA = 782, NB = 230
-        Phi(A,B,Cstand) = 0.001935
-        Phi(A,B,Cfair) = 0.001815
-        Cstand running time = 678
-        Cfair running time = 2706
-        Stand obj running time = 35
-        Fair obj running time = 34
+		Input file = datasets/uber_small.csv, L = 2, K = 4, M = 20
+		N = 1012, NA = 782, NB = 230
+		Phi(A,B,Cstand) = 0.002222
+		Phi(A,B,Cfair) = 0.001815
+		Cstand running time in ms = 643
+		Cfair running time in ms = 1492
+		Stand obj running time in ms = 28
+		Fair obj running time in ms = 19
          */
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -197,31 +197,24 @@ public class G36HW2 {
 					}
 				}
 				return new Tuple3<>(x, pair._2, c);
-			}); // TODO: cache this? Probably if we put together the next ones (we could also do only one series of passes) then no
+			}); // TODO: cache this?
 
-            //TODO: maybe these 2 could be put together for efficiency, even if not so wow from a clarity POV
 			// for each group,partition compute the size of the intersection (group ∩ U_i)
-			JavaPairRDD<Tuple2<Boolean,Integer>, Vector> byGroupCluster = partitioned
-				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), t._1()));
-			Map<Tuple2<Boolean, Integer>, Vector> partSum = byGroupCluster
-				.reduceByKey(G36HW2::add)
-				.collectAsMap();
 			// for each group,partition compute the sum of points in the intersection
-			Map<Tuple2<Boolean, Integer>, Long> partSize = partitioned
-				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), 1L))
-				.reduceByKey(Long::sum)
+			Map<Tuple2<Boolean,Integer>, Tuple2<Long, Vector>> groupStats = partitioned
+				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), new Tuple2<>(1L, t._1())))
+				.reduceByKey((x,y) -> new Tuple2<>(x._1 + y._1, add(x._2, y._2)))
 				.collectAsMap();
-
 
 			// aggregate relevant global statistics in O(k)
 			double[] alpha = new double[K], beta = new double[K];
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
 			for (int i = 0; i < K; i++) {
-				Tuple2<Boolean, Integer> keyA = new Tuple2<>(groupA, i);
-				Tuple2<Boolean, Integer> keyB = new Tuple2<>(groupB, i);
-				long sizeA = partSize.get(keyA), sizeB = partSize.get(keyB);
-				Vector sumA = partSum.get(keyA), sumB = partSum.get(keyB);
+				var statsA = groupStats.get(new Tuple2<>(groupA, i));
+				var statsB = groupStats.get(new Tuple2<>(groupB, i));
+				long sizeA = statsA._1, sizeB = statsB._1;
+				Vector sumA = statsA._2, sumB = statsB._2;
 				alpha[i] = (double) sizeA / NA;
 				beta[i] = (double) sizeB / NB;
 				BLAS.scal(1.0 / sizeA, sumA);
@@ -232,7 +225,8 @@ public class G36HW2 {
 			}
 
 			// compute distance from centers, O(n)
-			Map<Boolean, Double> delta = byGroupCluster
+			Map<Boolean, Double> delta = partitioned
+				.mapToPair(t -> new Tuple2<>(new Tuple2<>(t._2(), t._3()), t._1()))
 				.mapToPair(pair -> {
 					Boolean group = pair._1._1;
 					Vector[] muGroup = group ? muA : muB;
