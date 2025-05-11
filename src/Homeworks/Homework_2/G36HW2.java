@@ -156,17 +156,17 @@ public class G36HW2 {
 
         //TODO: output format
 
-        System.out.printf(Locale.ENGLISH, "Phi(A,B,Cstand) = %.6f \n", standObjective);
-        System.out.printf(Locale.ENGLISH, "Phi(A,B,Cfair) = %.6f \n", fairObjective);
+        System.out.printf(Locale.ENGLISH, "Fair objective with Standard Centers %.4f \n", standObjective);
+        System.out.printf(Locale.ENGLISH, "Fair objective with Fair Centers %.4f \n", fairObjective);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // PRINT RUNNING TIMES
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
-        System.out.printf(Locale.ENGLISH, "Cstand running time in ms = %d \n", c_stand_time);
-        System.out.printf(Locale.ENGLISH, "Cfair running time in ms = %d \n", c_fair_time);
-        System.out.printf(Locale.ENGLISH, "Stand obj running time in ms = %d \n", stand_obj_time);
-        System.out.printf(Locale.ENGLISH, "Fair obj running time in ms = %d \n", fair_obj_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute standard centers = %d ms \n", c_stand_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute fair centers = %d \n", c_fair_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute objective with standard centers = %d \n", stand_obj_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute objective with fair centers = %d \n", fair_obj_time);
     }
 
 	public static Vector add(Vector vec1, Vector vec2) {
