@@ -5,14 +5,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.mllib.clustering.KMeans;
-import org.apache.spark.mllib.clustering.KMeansModel;
-import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.mllib.linalg.Vectors;
-import scala.Tuple2;
 
 import javax.validation.constraints.NotNull;
 import java.util.*;
@@ -83,18 +76,36 @@ public class G36GEN {
         }
         List<Pair<double[], Boolean>> dataset = new ArrayList<>();
 
-        if (K == 1) {
-            //TODO:
+        int number_of_pairs = K/2;
+        int number_of_alone = K%2;
+
+        double[] curr_centers = new double[] {0.0, 0.0};
+
+        int number_of_point_per_cluster = N/(number_of_pairs+number_of_alone);
+
+        for (int i = 0; i<number_of_pairs; i++) {
+            int NA = number_of_point_per_cluster*5/6; //TODO: if something is odd we need to account for it
+            int NB = number_of_point_per_cluster-NA;
+
+            int left_out = NA%2+NB%2;
+
+            // Generate the two clusters near the current centers: TODO: take the number of points correctly
+            dataset.addAll(generateCluster(NA/2+left_out, curr_centers[0]+20, curr_centers[1]+120, 10, groupA));
+            dataset.addAll(generateCluster(NB/2, curr_centers[0]+20, curr_centers[1]+20, 3, groupB));
+
+            dataset.addAll(generateCluster(NA/2+left_out, curr_centers[0]+80, curr_centers[1]+120, 10, groupA));
+            dataset.addAll(generateCluster(NB/2, curr_centers[0]+80, curr_centers[1]+20, 3, groupB));
+
+            curr_centers[0] += 1000;
         }
 
-        // Generate the two clusters near the origin
-        dataset.addAll(generateCluster(N*5/12, random, 20, 120, 10, groupA));
-        dataset.addAll(generateCluster(N/12, random, 20, 20, 3, groupB));
-
-        dataset.addAll(generateCluster(N*5/12, random, 80, 120, 10, groupA));
-        dataset.addAll(generateCluster(N/12, random, 80, 20, 3, groupB));
-
-        //TODO: generate the other clusters
+        if (number_of_alone == 1) {
+            int NN = N-number_of_point_per_cluster*number_of_pairs;
+            int NA = NN*5/6;
+            int NB = NN-NA;
+            dataset.addAll(generateCluster(NA, curr_centers[0]+20, curr_centers[1]+120, 10, groupA));
+            dataset.addAll(generateCluster(NB, curr_centers[0]+20, curr_centers[1]+20, 3, groupB));
+        }
 
         return dataset;
     }
@@ -102,12 +113,12 @@ public class G36GEN {
     /**
      * Generates the upper cluster near the origin with mostly group A points
      */
-    private static List<Pair<double[], Boolean>>  generateCluster(int n, Random random, double centerX, double centerY, double radius, boolean group) {
+    private static List<Pair<double[], Boolean>>  generateCluster(int n, double centerX, double centerY, double radius, boolean group) {
 
         List<Pair<double[], Boolean>> answer = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            double x = centerX + random.nextGaussian() * radius;
-            double y = centerY + random.nextGaussian() * radius;
+            double x = centerX + G36GEN.random.nextGaussian() * radius;
+            double y = centerY + G36GEN.random.nextGaussian() * radius;
 
             double[] coords = {x,y};
             answer.add(new ImmutablePair<>(coords, group));

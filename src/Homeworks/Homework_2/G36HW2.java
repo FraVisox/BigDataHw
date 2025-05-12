@@ -15,6 +15,7 @@ import org.apache.spark.rdd.RDD;
 import scala.Tuple2;
 import scala.Tuple3;
 
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 
@@ -125,6 +126,8 @@ public class G36HW2 {
 
         long c_stand_time = end-start;
 
+        System.out.println(Arrays.toString(c_stand));
+
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // FAIR LLOYD'S ALGORITHM INVOCATION
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -135,6 +138,9 @@ public class G36HW2 {
         end = System.currentTimeMillis();
 
         long c_fair_time = end-start;
+
+        System.out.println(Arrays.toString(c_fair));
+
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // FIND VALUES OF OBJECTIVE FUNCTIONS
@@ -153,8 +159,6 @@ public class G36HW2 {
         end = System.currentTimeMillis();
 
         long fair_obj_time = end-start;
-
-        //TODO: output format
 
         System.out.printf(Locale.ENGLISH, "Fair objective with Standard Centers %.4f \n", standObjective);
         System.out.printf(Locale.ENGLISH, "Fair objective with Fair Centers %.4f \n", fairObjective);
@@ -197,7 +201,7 @@ public class G36HW2 {
 					}
 				}
 				return new Tuple3<>(x, pair._2, c);
-			}); // TODO: cache this?
+			}); // TODO: cache this? YES
 
 			// for each group,partition compute the size of the intersection (group ∩ U_i)
 			// for each group,partition compute the sum of points in the intersection
@@ -213,7 +217,7 @@ public class G36HW2 {
 			for (int i = 0; i < K; i++) {
 				Tuple2<Long, Vector> statsA = groupStats.get(new Tuple2<>(groupA, i));
 				Tuple2<Long, Vector> statsB = groupStats.get(new Tuple2<>(groupB, i));
-				long sizeA = statsA._1, sizeB = statsB._1;
+				long sizeA = statsA._1, sizeB = statsB._1; //TODO: nullpointer
 				Vector sumA = statsA._2, sumB = statsB._2;
 				alpha[i] = (double) sizeA / NA;
 				beta[i] = (double) sizeB / NB;
