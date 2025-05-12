@@ -9,6 +9,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.linalg.BLAS;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
+import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.rdd.RDD;
@@ -168,9 +169,9 @@ public class G36HW2 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         System.out.printf(Locale.ENGLISH, "Time to compute standard centers = %d ms \n", c_stand_time);
-        System.out.printf(Locale.ENGLISH, "Time to compute fair centers = %d \n", c_fair_time);
-        System.out.printf(Locale.ENGLISH, "Time to compute objective with standard centers = %d \n", stand_obj_time);
-        System.out.printf(Locale.ENGLISH, "Time to compute objective with fair centers = %d \n", fair_obj_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute fair centers = %d ms \n", c_fair_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute objective with standard centers = %d ms \n", stand_obj_time);
+        System.out.printf(Locale.ENGLISH, "Time to compute objective with fair centers = %d ms \n", fair_obj_time);
     }
 
 	public static Vector add(Vector vec1, Vector vec2) {
@@ -186,6 +187,8 @@ public class G36HW2 {
         //Initialize using kmeans||
         KMeansModel clusters = KMeans.train(rdd.map(x -> x._1).rdd(), K, 0);
         Vector[] centers = clusters.clusterCenters();
+        System.out.println(Arrays.toString(centers));
+        System.out.println("---------------------------------"); //TODO: sometimes there are some centers here but after the M iterations there are some NaN centers
         //Executes M iterations of the loop
 		for (int iter = 0; iter < M; iter++) {
 			// assign each point to the closest center, O(nk)
@@ -214,10 +217,18 @@ public class G36HW2 {
 			double[] alpha = new double[K], beta = new double[K];
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
+
+            double[] null_coords = new double[centers[0].size()];
+            for (int coord=0;coord< centers[0].size();coord++) {
+                null_coords[coord] = 0;
+            }
+
+            Vector null_vector = new DenseVector(null_coords);
+
 			for (int i = 0; i < K; i++) {
-				Tuple2<Long, Vector> statsA = groupStats.get(new Tuple2<>(groupA, i));
-				Tuple2<Long, Vector> statsB = groupStats.get(new Tuple2<>(groupB, i));
-				long sizeA = statsA._1, sizeB = statsB._1; //TODO: nullpointer
+				Tuple2<Long, Vector> statsA = groupStats.getOrDefault(new Tuple2<>(groupA, i), new Tuple2<>(1L, null_vector));
+				Tuple2<Long, Vector> statsB = groupStats.getOrDefault(new Tuple2<>(groupB, i), new Tuple2<>(1L, null_vector));
+				long sizeA = statsA._1, sizeB = statsB._1; //TODO: nullpointer. Dovrebbe essere risolto con il getOrDefault. Che fare se viene fuori il null_vector?
 				Vector sumA = statsA._2, sumB = statsB._2;
 				alpha[i] = (double) sizeA / NA;
 				beta[i] = (double) sizeB / NB;
@@ -225,7 +236,9 @@ public class G36HW2 {
 				BLAS.scal(1.0 / sizeB, sumB);
 				muA[i] = sumA;
 				muB[i] = sumB;
+                //TODO: sqdist non è già sqrt?
 				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
+                //System.out.println(ell[i]);
 			}
 
 			// compute distance from centers, O(n)
