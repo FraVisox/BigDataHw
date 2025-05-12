@@ -253,14 +253,17 @@ public class G36HW2 {
 				})
 				.reduceByKey(Double::sum)
 				.collectAsMap();
-			double fixedA = delta.get(groupA) / NA;
-			double fixedB = delta.get(groupB) / NB;
+			double fixedA = delta.getOrDefault(groupA, 0.0) / NA;
+			double fixedB = delta.getOrDefault(groupB, 0.0) / NB;
 
 			// select next centroids, O(kT)
 			double[] xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
 			for (int i = 0; i < K; i++) {
 				double x = xs[i], l = ell[i];
 				Vector ma = muA[i], mb = muB[i];
+                if (l == 0) { //TODO: penso sia qui il diviso zero
+                    l = 1;
+                }
 				BLAS.scal((l - x) / l, ma);
 				BLAS.scal(x / l, mb);
 				centers[i] = add(ma, mb);

@@ -69,7 +69,7 @@ public class G36GEN {
         System.out.printf(Locale.ENGLISH, "%.4f,%.4f,%c\n", coords[0], coords[1], group == groupA ? 'A' : 'B');
     }
 
-    private static @NotNull List<Pair<double[], Boolean>> generateDataset(int N, int K) {
+    public static @NotNull List<Pair<double[], Boolean>> generateDataset(int N, int K) {
         //Supposition: N is much larger than K
         if (K <= 0) {
             throw new IllegalArgumentException("K cannot be zero or less");
@@ -81,28 +81,30 @@ public class G36GEN {
 
         double[] curr_centers = new double[] {0.0, 0.0};
 
-        int number_of_point_per_cluster = N/(number_of_pairs+number_of_alone);
+        int number_of_point_per_pair_of_cluster = N/(2*number_of_pairs+number_of_alone);
+        int left_out = N-number_of_point_per_pair_of_cluster*2*number_of_pairs;
 
         for (int i = 0; i<number_of_pairs; i++) {
-            int NA = number_of_point_per_cluster*5/6; //TODO: if something is odd we need to account for it
-            int NB = number_of_point_per_cluster-NA;
-
-            int left_out = NA%2+NB%2;
+            int NA = number_of_point_per_pair_of_cluster*5/6;
+            int NB = number_of_point_per_pair_of_cluster-NA;
 
             // Generate the two clusters near the current centers: TODO: take the number of points correctly
-            dataset.addAll(generateCluster(NA/2+left_out, curr_centers[0]+20, curr_centers[1]+120, 10, groupA));
-            dataset.addAll(generateCluster(NB/2, curr_centers[0]+20, curr_centers[1]+20, 3, groupB));
+            dataset.addAll(generateCluster(NA, curr_centers[0]+20, curr_centers[1]+120, 10, groupA));
+            dataset.addAll(generateCluster(NB, curr_centers[0]+20, curr_centers[1]+20, 3, groupB));
 
-            dataset.addAll(generateCluster(NA/2+left_out, curr_centers[0]+80, curr_centers[1]+120, 10, groupA));
-            dataset.addAll(generateCluster(NB/2, curr_centers[0]+80, curr_centers[1]+20, 3, groupB));
+            if (i == 0 && number_of_alone == 0) {
+                NA += left_out;
+            }
+
+            dataset.addAll(generateCluster(NA, curr_centers[0]+80, curr_centers[1]+120, 10, groupA));
+            dataset.addAll(generateCluster(NB, curr_centers[0]+80, curr_centers[1]+20, 3, groupB));
 
             curr_centers[0] += 1000;
         }
 
         if (number_of_alone == 1) {
-            int NN = N-number_of_point_per_cluster*number_of_pairs;
-            int NA = NN*5/6;
-            int NB = NN-NA;
+            int NA = left_out*5/6;
+            int NB = left_out-NA;
             dataset.addAll(generateCluster(NA, curr_centers[0]+20, curr_centers[1]+120, 10, groupA));
             dataset.addAll(generateCluster(NB, curr_centers[0]+20, curr_centers[1]+20, 3, groupB));
         }
