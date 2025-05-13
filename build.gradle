@@ -2,6 +2,12 @@ plugins {
     id 'java'
 }
 
+// use java 17 for compatibility with the CloudVeneto jre
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
 // In this section you declare where to find the dependencies of your project
 repositories {
     mavenCentral()
