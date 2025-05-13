@@ -127,8 +127,6 @@ public class G36HW2 {
 
         long c_stand_time = end-start;
 
-        System.out.println(Arrays.toString(c_stand));
-
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // FAIR LLOYD'S ALGORITHM INVOCATION
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -139,9 +137,6 @@ public class G36HW2 {
         end = System.currentTimeMillis();
 
         long c_fair_time = end-start;
-
-        System.out.println(Arrays.toString(c_fair));
-
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // FIND VALUES OF OBJECTIVE FUNCTIONS
@@ -187,8 +182,6 @@ public class G36HW2 {
         //Initialize using kmeans||
         KMeansModel clusters = KMeans.train(rdd.map(x -> x._1).rdd(), K, 0);
         Vector[] centers = clusters.clusterCenters();
-        System.out.println(Arrays.toString(centers));
-        System.out.println("---------------------------------"); //TODO: sometimes there are some centers here but after the M iterations there are some NaN centers
         //Executes M iterations of the loop
 		for (int iter = 0; iter < M; iter++) {
 			// assign each point to the closest center, O(nk)
@@ -204,7 +197,7 @@ public class G36HW2 {
 					}
 				}
 				return new Tuple3<>(x, pair._2, c);
-			}); // TODO: cache this? YES
+			}).cache();
 
 			// for each group,partition compute the size of the intersection (group ∩ U_i)
 			// for each group,partition compute the sum of points in the intersection
@@ -214,6 +207,7 @@ public class G36HW2 {
 				.collectAsMap();
 
 			// aggregate relevant global statistics in O(k)
+			long[] countA = new long[K], countB = new long[K];
 			double[] alpha = new double[K], beta = new double[K];
 			Vector[] muA = new Vector[K], muB = new Vector[K];
 			double[] ell = new double[K];
@@ -226,19 +220,17 @@ public class G36HW2 {
             Vector null_vector = new DenseVector(null_coords);
 
 			for (int i = 0; i < K; i++) {
-				Tuple2<Long, Vector> statsA = groupStats.getOrDefault(new Tuple2<>(groupA, i), new Tuple2<>(1L, null_vector));
-				Tuple2<Long, Vector> statsB = groupStats.getOrDefault(new Tuple2<>(groupB, i), new Tuple2<>(1L, null_vector));
-				long sizeA = statsA._1, sizeB = statsB._1; //TODO: nullpointer. Dovrebbe essere risolto con il getOrDefault. Che fare se viene fuori il null_vector?
+				Tuple2<Long, Vector> statsA = groupStats.getOrDefault(new Tuple2<>(groupA, i), new Tuple2<>(0L, null_vector));
+				Tuple2<Long, Vector> statsB = groupStats.getOrDefault(new Tuple2<>(groupB, i), new Tuple2<>(0L, null_vector));
+				countA[i] = statsA._1; countB[i] = statsB._1;
 				Vector sumA = statsA._2, sumB = statsB._2;
-				alpha[i] = (double) sizeA / NA;
-				beta[i] = (double) sizeB / NB;
-				BLAS.scal(1.0 / sizeA, sumA);
-				BLAS.scal(1.0 / sizeB, sumB);
+				alpha[i] = (double) countA[i] / NA;
+				beta[i] = (double) countB[i] / NB;
+				BLAS.scal(1.0 / countA[i], sumA);
+				BLAS.scal(1.0 / countB[i], sumB);
 				muA[i] = sumA;
 				muB[i] = sumB;
-                //TODO: sqdist non è già sqrt?
 				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
-                //System.out.println(ell[i]);
 			}
 
 			// compute distance from centers, O(n)
@@ -259,14 +251,17 @@ public class G36HW2 {
 			// select next centroids, O(kT)
 			double[] xs = computeVectorX(fixedA, fixedB, alpha, beta, ell, K);
 			for (int i = 0; i < K; i++) {
-				double x = xs[i], l = ell[i];
-				Vector ma = muA[i], mb = muB[i];
-                if (l == 0) { //TODO: penso sia qui il diviso zero
-                    l = 1;
-                }
-				BLAS.scal((l - x) / l, ma);
-				BLAS.scal(x / l, mb);
-				centers[i] = add(ma, mb);
+				if (countA[i] == 0) {
+					centers[i] = muB[i];
+				} else if (countB[i] == 0) {
+					centers[i] = muA[i];
+				} else {
+					double x = xs[i], l = ell[i];
+					Vector ma = muA[i], mb = muB[i];
+					BLAS.scal((l - x) / l, ma);
+					BLAS.scal(x / l, mb);
+					centers[i] = add(ma, mb);
+				}
 			}
 		}
         //Returns the set of C centroids
