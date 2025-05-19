@@ -13,7 +13,7 @@ import java.util.*;
 
 public class G36GEN {
 
-    private static final Random random = new Random(1);
+    private static  Random random = new Random(1);
 
     //Boolean definition of the groups. In case the groups were more than 2 we could use an enum.
     private final static boolean groupA = true;
@@ -70,6 +70,7 @@ public class G36GEN {
     }
 
     public static @NotNull List<Pair<double[], Boolean>> generateDataset(int N, int K) {
+        random = new Random(1);
         //Supposition: N is much larger than K
         if (K <= 0 || K > N) {
             throw new IllegalArgumentException("K cannot be zero or more than N");
