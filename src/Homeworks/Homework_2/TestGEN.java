@@ -32,15 +32,14 @@ public class TestGEN {
         JavaSparkContext sc = new JavaSparkContext(conf);
         sc.setLogLevel("OFF");
 
-        for (int K = 1; K < 1000; K++) {
-            for (int N = K; N < 100000; N++) {
+        for (int K = 2; K < 1000; K++) {
+            double mean = 0;
+            int tot = 0;
+            for (int N = K+1; N < 10000; N += 100) {
                 List<Pair<double[], Boolean>> dataset = generateDataset(N, K);
                 if (dataset.size() != N) {
                     System.out.print("------------------\nERROR: size is "+dataset.size());
                     System.out.println("--------------------");
-                }
-                if (N % 1000 == 0) {
-                    System.out.println("N = "+N);
                 }
 
                 // Test of radius:
@@ -68,11 +67,11 @@ public class TestGEN {
 
                 // Division
                 double division = stand_rad/fair_rad;
-                if (division <= 2) {
-                    System.out.println("Il rapporto per K="+K+",N="+N+" è "+division);
-                }
+                System.out.println("Il rapporto per K="+K+",N="+N+" è "+division);
+                mean += division;
+                tot++;
             }
-            System.out.println("K = "+K);
+            System.out.println("K = "+K+" has mean ratio of "+(mean/tot));
         }
     }
 }

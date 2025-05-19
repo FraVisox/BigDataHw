@@ -125,6 +125,8 @@ public class G36HW2 {
         Vector[] c_stand = clusters.clusterCenters();
         end = System.currentTimeMillis();
 
+        System.out.println("Standard centers: "+Arrays.toString(c_stand));
+
         long c_stand_time = end-start;
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
@@ -135,6 +137,8 @@ public class G36HW2 {
         start = System.currentTimeMillis();
         Vector[] c_fair = MRFairLloyd(inputPoints, NA, NB, K, M);
         end = System.currentTimeMillis();
+
+        System.out.println("Fair centers: "+Arrays.toString(c_fair));
 
         long c_fair_time = end-start;
 

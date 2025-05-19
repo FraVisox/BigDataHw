@@ -91,7 +91,7 @@ public class G36GEN {
 
         double[] curr_centers = new double[] {0.0, 0.0};
 
-        int number_of_point_per_pair_of_cluster = N/(2*number_of_pairs+number_of_alone);
+        int number_of_point_per_pair_of_cluster = N/(2*number_of_pairs+number_of_alone); //TODO: the denominator is K
         int left_out = N-number_of_point_per_pair_of_cluster*2*number_of_pairs;
 
         for (int i = 0; i<number_of_pairs; i++) {
