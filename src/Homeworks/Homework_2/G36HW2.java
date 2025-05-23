@@ -16,7 +16,6 @@ import org.apache.spark.rdd.RDD;
 import scala.Tuple2;
 import scala.Tuple3;
 
-import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 
@@ -28,18 +27,6 @@ public class G36HW2 {
     private final static boolean groupB = false;
 
     public static void main(String[] args) {
-
-        /* EXAMPLE OF OUTPUT:
-
-		Input file = datasets/uber_small.csv, L = 2, K = 4, M = 20
-		N = 1012, NA = 782, NB = 230
-		Phi(A,B,Cstand) = 0.002222
-		Phi(A,B,Cfair) = 0.001815
-		Cstand running time in ms = 643
-		Cfair running time in ms = 1492
-		Stand obj running time in ms = 28
-		Fair obj running time in ms = 19
-         */
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // CHECKING NUMBER OF CMD LINE PARAMETERS.
@@ -220,7 +207,6 @@ public class G36HW2 {
             Vector null_vector = new DenseVector(null_coords);
 
 			for (int i = 0; i < K; i++) {
-                //TODO: here the problem is that with what I had before, so 0 by default, then after I was dividing by 0
 				Tuple2<Long, Vector> statsA = groupStats.getOrDefault(new Tuple2<>(groupA, i), new Tuple2<>(0L, null_vector));
 				Tuple2<Long, Vector> statsB = groupStats.getOrDefault(new Tuple2<>(groupB, i), new Tuple2<>(0L, null_vector));
 				countA[i] = statsA._1; countB[i] = statsB._1;

@@ -8,10 +8,13 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import javax.validation.constraints.NotNull;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
 
 
-public class G36GEN {
+public class G36GEN_copy {
 
     private static final Random random = new Random(1);
 
@@ -72,6 +75,7 @@ public class G36GEN {
     }
 
     private static void printPoint(double[] coords, boolean group) {
+        // EXAMPLE OUTPUT: 40.7267,-74.0345,B
         System.out.printf(Locale.ENGLISH, "%.4f,%.4f,%c\n", coords[0], coords[1], group == groupA ? 'A' : 'B');
     }
 
@@ -102,10 +106,48 @@ public class G36GEN {
         }
 
         return dataset;
+
+                /* THIS IS AN ALTERNATIVE THAT REQUIRES N > 2*K
+
+
+        // Points per cluster
+        int points_per_cluster = N/K;
+        int left_out = N%K;
+
+        // Initialize the centers
+        double[] curr_centers = new double[] {0.0, 0.0};
+
+        for (int i = 0; i<K; i++) {
+
+            // Since there are at least 2 points per cluster, NA >= 1
+            int NA = points_per_cluster-1;
+            int NB = 1;
+
+            // Distribute the other points
+            if (left_out >= 1) {
+                if (i == K-1) {
+                    NA += left_out;
+                }
+                else {
+                    NA++;
+                    left_out--;
+                }
+            }
+
+            // Generate the two balls
+            dataset.addAll(generateCluster(NA, curr_centers[0], curr_centers[1]+y_A, big_radius, groupA));
+            dataset.addAll(generateCluster(NB, curr_centers[0], curr_centers[1]+y_B, small_radius, groupB));
+
+            curr_centers[0] += gap;
+        }
+
+        return dataset;
+
+         */
     }
 
-    // Generates one cluster of the given radius around the center
     private static List<Pair<double[], Boolean>>  generateCluster(int n, double centerX, double centerY, double radius, boolean group) {
+
         List<Pair<double[], Boolean>> answer = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             double x = centerX + random.nextGaussian() * radius;

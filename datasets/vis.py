@@ -46,8 +46,8 @@ def main():
     plt.scatter(class_b_x, class_b_y, color='red', marker='x', s=100, label='Class B')
     
     # Add labels and title
-    plt.title(f'{filename}')
-    plt.grid(True)
+    plt.title('Example of generated dataset for N=500, K=4')
+    #plt.grid(True)
     plt.legend()
     
     # Show the plot
