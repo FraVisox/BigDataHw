@@ -224,14 +224,19 @@ public class G36HW2 {
             Vector null_vector = new DenseVector(null_coords);
 
 			for (int i = 0; i < K; i++) {
+                //TODO: here the problem is that with what I had before, so 0 by default, then after I was dividing by 0
 				Tuple2<Long, Vector> statsA = groupStats.getOrDefault(new Tuple2<>(groupA, i), new Tuple2<>(0L, null_vector));
 				Tuple2<Long, Vector> statsB = groupStats.getOrDefault(new Tuple2<>(groupB, i), new Tuple2<>(0L, null_vector));
 				countA[i] = statsA._1; countB[i] = statsB._1;
 				Vector sumA = statsA._2, sumB = statsB._2;
 				alpha[i] = (double) countA[i] / NA;
 				beta[i] = (double) countB[i] / NB;
-				BLAS.scal(1.0 / countA[i], sumA);
-				BLAS.scal(1.0 / countB[i], sumB);
+                if (countA[i] != 0) {
+                    BLAS.scal(1.0 / countA[i], sumA);
+                }
+                if (countB[i] != 0) {
+                    BLAS.scal(1.0 / countB[i], sumB);
+                }
 				muA[i] = sumA;
 				muB[i] = sumB;
 				ell[i] = Math.sqrt(Vectors.sqdist(muA[i], muB[i]));
