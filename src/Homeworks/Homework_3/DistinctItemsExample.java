@@ -1,3 +1,5 @@
+package Homeworks.Homework_3;
+
 import org.apache.hadoop.util.hash.Hash;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.StorageLevels;
@@ -130,4 +132,13 @@ public class DistinctItemsExample {
         Collections.sort(distinctKeys, Collections.reverseOrder());
         System.out.println("Largest item = " + distinctKeys.get(0));
     }
+
+    private static int hashFunction(int x, int C) {
+        int p = 8191;
+        Random random = new Random(1);
+        int a = random.nextInt(p-1)+1;
+        int b = random.nextInt(p);
+        return ((a*x+b)%p)%C;
+    }
+
 }
