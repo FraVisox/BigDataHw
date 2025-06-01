@@ -14,6 +14,8 @@ public class G36HW3 {
     // After how many items should we stop?
     // public static final int THRESHOLD = 1000000;
 
+    public static final int p = 8191;
+
     public static void main(String[] args) throws Exception {
         if (args.length != 5) {
             throw new IllegalArgumentException("USAGE: portExp threshold (T) number_of_rows (D) number_of_cols (W) number_of_top (K)");
@@ -54,6 +56,12 @@ public class G36HW3 {
         System.out.println("Receiving data from port = " + portExp);
         int THRESHOLD = Integer.parseInt(args[1]);
         System.out.println("Threshold = " + THRESHOLD);
+        int D = Integer.parseInt(args[2]);
+        System.out.println("Rows = " + THRESHOLD);
+        int W = Integer.parseInt(args[3]);
+        System.out.println("Columns = " + THRESHOLD);
+        int K = Integer.parseInt(args[4]);
+        System.out.println("Top elements = " + THRESHOLD);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // DEFINING THE REQUIRED DATA STRUCTURES TO MAINTAIN THE STATE OF THE STREAM
@@ -66,6 +74,20 @@ public class G36HW3 {
         long[] streamLength = new long[1]; // Stream length (an array to be passed by reference)
         streamLength[0]=0L;
         HashMap<Long, Long> histogram = new HashMap<>(); // Hash Table for the distinct elements
+
+        // Create the hash functions (which means create a and b)
+        ArrayList<int[]> countMin_h = new ArrayList<>(D);
+        ArrayList<int[]> countSk_h = new ArrayList<>(D);
+        ArrayList<int[]> countSk_g = new ArrayList<>(D);
+
+        Random random = new Random(1);
+        for (int i = 0; i<D; i++) {
+            countMin_h.add(generateHashFunction(random));
+            countSk_h.add(generateHashFunction(random));
+            countSk_g.add(generateHashFunction(random));
+        }
+
+
 
         // CODE TO PROCESS AN UNBOUNDED STREAM OF DATA IN BATCHES
         sc.socketTextStream("algo.dei.unipd.it", portExp, StorageLevels.MEMORY_AND_DISK)
@@ -92,6 +114,10 @@ public class G36HW3 {
                                     histogram.put(pair.getKey(), 1L);
                                 }
                             }
+
+                            //TODO: put here the countMinSketch and countSketch
+
+
                             // If we wanted, here we could run some additional code on the global histogram
                             if (streamLength[0] >= THRESHOLD) {
                                 // Stop receiving and processing further batches
@@ -122,18 +148,30 @@ public class G36HW3 {
         // COMPUTE AND PRINT FINAL STATISTICS
         System.out.println("Number of items processed = " + streamLength[0]);
         System.out.println("Number of distinct items = " + histogram.size());
-        long max = 0L;
+
+        // TODO: compute the average relative error for both countMinSketch and countSketch
+
+        // TODO: print what needed
+        if (K <= 10) {
+
+        }
+
+        /* USELESS for our purposes:
+
         ArrayList<Long> distinctKeys = new ArrayList<>(histogram.keySet());
         Collections.sort(distinctKeys, Collections.reverseOrder());
         System.out.println("Largest item = " + distinctKeys.get(0));
+         */
     }
 
-    private static int hashFunction(int x, int C) {
-        int p = 8191;
-        Random random = new Random(1);
+    private static int hash(int x, int C, int a, int b) {
+        return ((a*x+b)%p)%C;
+    }
+
+    private static int[] generateHashFunction(Random random) {
         int a = random.nextInt(p-1)+1;
         int b = random.nextInt(p);
-        return ((a*x+b)%p)%C;
+        return new int[] {a,b};
     }
 
 }
