@@ -36,6 +36,5 @@ To learn more about Spark Streaming you may refer to the official Spark site. Re
 # TASK
 ![img_2.png](img_2.png)
 ![img_3.png](img_3.png)
-![img_4.png](img_4.png)
 ![img_5.png](img_5.png)
 
