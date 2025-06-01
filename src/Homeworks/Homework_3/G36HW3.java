@@ -1,5 +1,7 @@
 package Homeworks.Homework_3;
 
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.StorageLevels;
 import org.apache.spark.streaming.Durations;
@@ -73,21 +75,24 @@ public class G36HW3 {
         // long would not work since the lambda would not be allowed to update it.
         long[] streamLength = new long[1]; // Stream length (an array to be passed by reference)
         streamLength[0]=0L;
-        HashMap<Long, Long> histogram = new HashMap<>(); // Hash Table for the distinct elements
 
-        // Create the hash functions (which means create a and b)
-        ArrayList<int[]> countMin_h = new ArrayList<>(D);
-        ArrayList<int[]> countSk_h = new ArrayList<>(D);
-        ArrayList<int[]> countSk_g = new ArrayList<>(D);
+        // Hash Table for the distinct elements
+        HashMap<Long, Long> histogram = new HashMap<>();
+
+        // Create the hash functions for both CM and CS
+        ArrayList<int[]> CM_h = new ArrayList<>(D);
+        ArrayList<int[]> CS_h = new ArrayList<>(D);
+        ArrayList<int[]> CS_g = new ArrayList<>(D);
 
         Random random = new Random(1);
         for (int i = 0; i<D; i++) {
-            countMin_h.add(generateHashFunction(random));
-            countSk_h.add(generateHashFunction(random));
-            countSk_g.add(generateHashFunction(random));
+            CM_h.add(generateHashFunction(random));
+            CS_h.add(generateHashFunction(random));
+            CS_g.add(generateHashFunction(random));
         }
 
-
+        long[][] counter_CM = new long[D][W];
+        long[][] counter_CS = new long[D][W];
 
         // CODE TO PROCESS AN UNBOUNDED STREAM OF DATA IN BATCHES
         sc.socketTextStream("algo.dei.unipd.it", portExp, StorageLevels.MEMORY_AND_DISK)
@@ -110,12 +115,21 @@ public class G36HW3 {
                             // THRESHOLD value (among all batches processed so far), subsequent items of the
                             // current batch are ignored, and no further batches will be processed
                             for (Map.Entry<Long, Long> pair : batchItems.entrySet()) {
-                                if (!histogram.containsKey(pair.getKey())) {
-                                    histogram.put(pair.getKey(), 1L);
+
+                                // Exact frequencies
+                                histogram.put(pair.getKey(), histogram.getOrDefault(pair.getKey(), 0L)+1);
+
+                                // TODO: we can keep track of the top K frequent elements inside the stream, or sort at the end
+
+                                // Count-min sketch
+                                for (int j = 0; j < D; j++) {
+                                    int[] elements = CM_h.get(j);
+                                    counter_CM[j][hash(pair.getKey(), W, elements)]++;
+
+                                    //TODO: put here countSketch
                                 }
                             }
 
-                            //TODO: put here the countMinSketch and countSketch
 
 
                             // If we wanted, here we could run some additional code on the global histogram
@@ -150,6 +164,8 @@ public class G36HW3 {
         System.out.println("Number of distinct items = " + histogram.size());
 
         // TODO: compute the average relative error for both countMinSketch and countSketch
+        long phi_K = 0L;
+
 
         // TODO: print what needed
         if (K <= 10) {
@@ -164,8 +180,20 @@ public class G36HW3 {
          */
     }
 
-    private static int hash(int x, int C, int a, int b) {
-        return ((a*x+b)%p)%C;
+    // Estimates the frequency of the item x with CM
+    private static long estimateFrequencyCM(long x, int W, int D, ArrayList<int[]> CM_h, long[][] counter_CM) {
+        long min = counter_CM[0][hash(x, W, CM_h.get(0))];
+        for (int j = 1; j < D; j++) {
+            min = Math.min(min, counter_CM[0][hash(x, W, CM_h.get(j))]);
+        }
+        return min;
+    }
+
+    // a is the first element of the hash function, b the second
+    private static int hash(long x, int C, int[] hashFunc) {
+        int a = hashFunc[0];
+        int b = hashFunc[1];
+        return ((int)((a*x+b)%p))%C;
     }
 
     private static int[] generateHashFunction(Random random) {
