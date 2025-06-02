@@ -96,54 +96,53 @@ public class G36HW3 {
 
         // CODE TO PROCESS AN UNBOUNDED STREAM OF DATA IN BATCHES
         sc.socketTextStream("algo.dei.unipd.it", portExp, StorageLevels.MEMORY_AND_DISK)
-                // For each batch, to the following.
-                // BEWARE: the `foreachRDD` method has "at least once semantics", meaning
-                // that the same data might be processed multiple times in case of failure.
-                .foreachRDD((batch, time) -> {
-                    // this is working on the batch at time `time`.
-                    if (streamLength[0] < THRESHOLD) {
-                        long batchSize = batch.count();
-                        streamLength[0] += batchSize;
-                        if (batchSize > 0) {
-                            System.out.println("Batch size at time [" + time + "] is: " + batchSize);
-                            // Extract the distinct items from the batch
-                            Map<Long, Long> batchItems = batch
-                                    .mapToPair(s -> new Tuple2<>(Long.parseLong(s), 1L))
-                                    .reduceByKey((i1, i2) -> i1 + i2)
-                                    .collectAsMap();
-                            // Update the streaming state. If the overall count of processed items reaches the
-                            // THRESHOLD value (among all batches processed so far), subsequent items of the
-                            // current batch are ignored, and no further batches will be processed
-                            for (Map.Entry<Long, Long> pair : batchItems.entrySet()) {
-								long x = pair.getKey();
-								long count = pair.getValue();
+			// For each batch, to the following.
+			// BEWARE: the `foreachRDD` method has "at least once semantics", meaning
+			// that the same data might be processed multiple times in case of failure.
+			.foreachRDD((batch, time) -> {
+				// this is working on the batch at time `time`.
+				if (streamLength[0] >= THRESHOLD) return;
+				long batchSize = batch.count();
+				streamLength[0] += batchSize;
+				if (batchSize == 0) return;
+				System.out.println("Batch size at time [" + time + "] is: " + batchSize);
+				// Extract the distinct items from the batch
+				Map<Long, Long> batchItems = batch
+						.mapToPair(s -> new Tuple2<>(Long.parseLong(s), 1L))
+						.reduceByKey((i1, i2) -> i1 + i2)
+						.collectAsMap();
+				// Update the streaming state. If the overall count of processed items reaches the
+				// THRESHOLD value (among all batches processed so far), subsequent items of the
+				// current batch are ignored, and no further batches will be processed
+				for (Map.Entry<Long, Long> pair : batchItems.entrySet()) {
+					long x = pair.getKey();
+					long count = pair.getValue();
 
-                                // Exact frequencies
-                                histogram.put(x, histogram.getOrDefault(x, 0L) + count);
+					// Exact frequencies
+					histogram.put(x, histogram.getOrDefault(x, 0L) + count);
 
-                                // TODO: we can keep track of the top K frequent elements inside the stream, or sort at the end
+					// TODO: we can keep track of the top K frequent elements inside the stream, or sort at the end
 
-                                // Count-min sketch
-                                for (int j = 0; j < D; j++) {
-                                    int[] elements = CM_h.get(j);
-									int i = hash(x, W, elements);
-                                    counter_CM[j][i] += count;
+					// Count-min sketch
+					for (int j = 0; j < D; j++) {
+						int i = hash(x, W, CM_h.get(j));
+						counter_CM[j][i] += count;
 
-                                    //TODO: put here countSketch
-                                }
-                            }
+						i = hash(x, W, CS_h.get(j));
+						int sign = hashSign(x, CS_g.get(j));
+						counter_CS[j][i] += sign * count;
+					}
+				}
 
 
 
-                            // If we wanted, here we could run some additional code on the global histogram
-                            if (streamLength[0] >= THRESHOLD) {
-                                // Stop receiving and processing further batches
-                                stoppingSemaphore.release();
-                            }
+				// If we wanted, here we could run some additional code on the global histogram
+				if (streamLength[0] >= THRESHOLD) {
+					// Stop receiving and processing further batches
+					stoppingSemaphore.release();
+				}
 
-                        }
-                    }
-                });
+			});
 
         // MANAGING STREAMING SPARK CONTEXT
         System.out.println("Starting streaming engine");
@@ -179,10 +178,11 @@ public class G36HW3 {
         // TODO: print what needed
         if (K <= 10) {
 			System.out.println("Top " + K + " items:");
-			System.out.println("Item\tFrequency\tCM frequency");
+			System.out.println("Item\tFrequency\tCM frequency\tCS frequency");
 			for (Pair<Long, Long> pair : topK) {
 				long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
-				System.out.println(pair.getKey() + "\t" + pair.getValue() + "\t" + cm_freq);
+				long cs_freq = estimateFrequencyCS(pair.getKey(), W, D, CS_h, CS_g, counter_CS);
+				System.out.println(pair.getKey() + "\t" + pair.getValue() + "\t" + cm_freq + "\t" + cs_freq);
 			}
         }
 
@@ -203,11 +203,29 @@ public class G36HW3 {
         return min;
     }
 
+    private static long estimateFrequencyCS(long x, int W, int D, ArrayList<int[]> CS_h, ArrayList<int[]> CS_g, long[][] counter_CS) {
+		ArrayList<Long> values = new ArrayList<>();
+        for (int j = 0; j < D; j++) {
+			int i = hash(x, W, CS_h.get(j));
+			int sign = hashSign(x, CS_g.get(j));
+            long v = counter_CS[j][i] * sign;
+			values.add(v);
+        }
+		Collections.sort(values);
+		return D % 2 == 0
+			? (values.get(D / 2 - 1) + values.get(D / 2)) / 2
+			: values.get(D / 2);
+    }
+
     // a is the first element of the hash function, b the second
     private static int hash(long x, int C, int[] hashFunc) {
         int a = hashFunc[0];
         int b = hashFunc[1];
         return ((int)((a*x+b)%p))%C;
+    }
+
+    private static int hashSign(long x, int[] hashFunc) {
+		return hash(x, 2, hashFunc) * 2 - 1;
     }
 
     private static int[] generateHashFunction(Random random) {
