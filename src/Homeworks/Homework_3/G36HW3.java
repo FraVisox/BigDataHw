@@ -109,22 +109,25 @@ public class G36HW3 {
                             // Extract the distinct items from the batch
                             Map<Long, Long> batchItems = batch
                                     .mapToPair(s -> new Tuple2<>(Long.parseLong(s), 1L))
-                                    .reduceByKey((i1, i2) -> 1L)
+                                    .reduceByKey((i1, i2) -> i1 + i2)
                                     .collectAsMap();
                             // Update the streaming state. If the overall count of processed items reaches the
                             // THRESHOLD value (among all batches processed so far), subsequent items of the
                             // current batch are ignored, and no further batches will be processed
                             for (Map.Entry<Long, Long> pair : batchItems.entrySet()) {
+								long x = pair.getKey();
+								long count = pair.getValue();
 
                                 // Exact frequencies
-                                histogram.put(pair.getKey(), histogram.getOrDefault(pair.getKey(), 0L)+1);
+                                histogram.put(x, histogram.getOrDefault(x, 0L) + count);
 
                                 // TODO: we can keep track of the top K frequent elements inside the stream, or sort at the end
 
                                 // Count-min sketch
                                 for (int j = 0; j < D; j++) {
                                     int[] elements = CM_h.get(j);
-                                    counter_CM[j][hash(pair.getKey(), W, elements)]++;
+									int i = hash(x, W, elements);
+                                    counter_CM[j][i] += count;
 
                                     //TODO: put here countSketch
                                 }
@@ -164,12 +167,23 @@ public class G36HW3 {
         System.out.println("Number of distinct items = " + histogram.size());
 
         // TODO: compute the average relative error for both countMinSketch and countSketch
-        long phi_K = 0L;
-
+		ArrayList<Pair<Long, Long>> topK = new ArrayList<>();
+		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
+			topK.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
+		}
+		Collections.sort(topK, (o1, o2) -> o2.getValue().compareTo(o1.getValue()));
+		long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
+		System.out.println("Phi(K) = " + phi_K);
+		topK.removeIf(e -> e.getValue() < phi_K);
 
         // TODO: print what needed
         if (K <= 10) {
-
+			System.out.println("Top " + K + " items:");
+			System.out.println("Item\tFrequency\tCM frequency");
+			for (Pair<Long, Long> pair : topK) {
+				long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
+				System.out.println(pair.getKey() + "\t" + pair.getValue() + "\t" + cm_freq);
+			}
         }
 
         /* USELESS for our purposes:
@@ -182,9 +196,9 @@ public class G36HW3 {
 
     // Estimates the frequency of the item x with CM
     private static long estimateFrequencyCM(long x, int W, int D, ArrayList<int[]> CM_h, long[][] counter_CM) {
-        long min = counter_CM[0][hash(x, W, CM_h.get(0))];
-        for (int j = 1; j < D; j++) {
-            min = Math.min(min, counter_CM[0][hash(x, W, CM_h.get(j))]);
+        long min = Long.MAX_VALUE;
+        for (int j = 0; j < D; j++) {
+            min = Math.min(min, counter_CM[j][hash(x, W, CM_h.get(j))]);
         }
         return min;
     }

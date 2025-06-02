@@ -1,0 +1,1 @@
+java -Dspark.master="local[*]" --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED -cp build/classes/java/main:$(gradle -q printClasspath) Homeworks.Homework_3.G36HW3 "$@"
