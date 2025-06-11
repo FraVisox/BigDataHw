@@ -55,15 +55,15 @@ public class G36HW3 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         int portExp = Integer.parseInt(args[0]);
-        System.out.println("Receiving data from port = " + portExp);
+        //System.out.println("Receiving data from port = " + portExp);
         int THRESHOLD = Integer.parseInt(args[1]);
-        System.out.println("Threshold = " + THRESHOLD);
+        //System.out.println("Threshold = " + THRESHOLD);
         int D = Integer.parseInt(args[2]);
-        System.out.println("Rows = " + THRESHOLD);
+        //System.out.println("Rows = " + THRESHOLD);
         int W = Integer.parseInt(args[3]);
-        System.out.println("Columns = " + THRESHOLD);
+        //System.out.println("Columns = " + THRESHOLD);
         int K = Integer.parseInt(args[4]);
-        System.out.println("Top elements = " + THRESHOLD);
+        //System.out.println("Top elements = " + THRESHOLD);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // DEFINING THE REQUIRED DATA STRUCTURES TO MAINTAIN THE STATE OF THE STREAM
@@ -93,6 +93,7 @@ public class G36HW3 {
 
         long[][] counter_CM = new long[D][W];
         long[][] counter_CS = new long[D][W];
+        PriorityQueue<Pair<Long, Long>> topKHeap = new PriorityQueue<>(K, Comparator.comparingLong(Pair::getValue));
 
         // CODE TO PROCESS AN UNBOUNDED STREAM OF DATA IN BATCHES
         sc.socketTextStream("algo.dei.unipd.it", portExp, StorageLevels.MEMORY_AND_DISK)
@@ -105,7 +106,7 @@ public class G36HW3 {
 				long batchSize = batch.count();
 				streamLength[0] += batchSize;
 				if (batchSize == 0) return;
-				System.out.println("Batch size at time [" + time + "] is: " + batchSize);
+				//System.out.println("Batch size at time [" + time + "] is: " + batchSize);
 				// Extract the distinct items from the batch
 				Map<Long, Long> batchItems = batch
 						.mapToPair(s -> new Tuple2<>(Long.parseLong(s), 1L))
@@ -121,7 +122,17 @@ public class G36HW3 {
 					// Exact frequencies
 					histogram.put(x, histogram.getOrDefault(x, 0L) + count);
 
-					// TODO: we can keep track of the top K frequent elements inside the stream, or sort at the end
+                    // Update the top-K Heavy Hitters
+                    Pair<Long, Long> current = new ImmutablePair<>(x, histogram.get(x));
+                    if (topKHeap.contains(current)) {
+                        topKHeap.remove(current);
+                        topKHeap.add(current);
+                    } else if (topKHeap.size() < K) {
+                        topKHeap.add(current);
+                    } else if (topKHeap.peek().getValue() < current.getValue()) {
+                        topKHeap.poll();
+                        topKHeap.add(current);
+                    }
 
 					// Count-min sketch
 					for (int j = 0; j < D; j++) {
@@ -134,8 +145,6 @@ public class G36HW3 {
 					}
 				}
 
-
-
 				// If we wanted, here we could run some additional code on the global histogram
 				if (streamLength[0] >= THRESHOLD) {
 					// Stop receiving and processing further batches
@@ -145,11 +154,11 @@ public class G36HW3 {
 			});
 
         // MANAGING STREAMING SPARK CONTEXT
-        System.out.println("Starting streaming engine");
+        //System.out.println("Starting streaming engine");
         sc.start();
-        System.out.println("Waiting for shutdown condition");
+        //System.out.println("Waiting for shutdown condition");
         stoppingSemaphore.acquire();
-        System.out.println("Stopping the streaming engine");
+        //System.out.println("Stopping the streaming engine");
 
         /* The following command stops the execution of the stream. The first boolean, if true, also
            stops the SparkContext, while the second boolean, if true, stops gracefully by waiting for
@@ -159,13 +168,12 @@ public class G36HW3 {
         */
 
         sc.stop(false, true);
-        System.out.println("Streaming engine stopped");
+        //System.out.println("Streaming engine stopped");
 
         // COMPUTE AND PRINT FINAL STATISTICS
-        System.out.println("Number of items processed = " + streamLength[0]);
-        System.out.println("Number of distinct items = " + histogram.size());
+        //System.out.println("Number of items processed = " + streamLength[0]);
+        //System.out.println("Number of distinct items = " + histogram.size());
 
-        // TODO: compute the average relative error for both countMinSketch and countSketch
 		ArrayList<Pair<Long, Long>> topK = new ArrayList<>();
 		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
 			topK.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
@@ -175,15 +183,32 @@ public class G36HW3 {
 		System.out.println("Phi(K) = " + phi_K);
 		topK.removeIf(e -> e.getValue() < phi_K);
 
-        // TODO: print what needed
+        double sumRelErrCM = 0.0;
+        double sumRelErrCS = 0.0;
+        for (Pair<Long, Long> pair : topK) {
+            long trueFreq = pair.getValue();
+            long estCM = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
+            long estCS = estimateFrequencyCS(pair.getKey(), W, D, CS_h, CS_g, counter_CS);
+            sumRelErrCM += Math.abs(trueFreq - estCM) / (double) trueFreq;
+            sumRelErrCS += Math.abs(trueFreq - estCS) / (double) trueFreq;
+        }
+        double avgRelErrCM = sumRelErrCM / topK.size();
+        double avgRelErrCS = sumRelErrCS / topK.size();
+
+        System.out.printf("Port = %d T = %d D = %d W = %d K = %d\n", portExp, THRESHOLD, D, W, K);
+        System.out.printf("Number of processed items = %d\n", streamLength[0]);
+        System.out.printf("Number of distinct items  = %d\n", histogram.size());
+        System.out.printf("Number of Top-K Heavy Hitters = %d\n", topK.size());
+        System.out.printf(Locale.US, "Avg Relative Error for Top-K Heavy Hitters with CM = %.15f\n", avgRelErrCM);
+        System.out.printf(Locale.US, "Avg Relative Error for Top-K Heavy Hitters with CS = %.15f\n", avgRelErrCS);
+
         if (K <= 10) {
-			System.out.println("Top " + K + " items:");
-			System.out.println("Item\tFrequency\tCM frequency\tCS frequency");
-			for (Pair<Long, Long> pair : topK) {
-				long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
-				long cs_freq = estimateFrequencyCS(pair.getKey(), W, D, CS_h, CS_g, counter_CS);
-				System.out.println(pair.getKey() + "\t" + pair.getValue() + "\t" + cm_freq + "\t" + cs_freq);
-			}
+            System.out.println("Top-K Heavy Hitters:");
+            for (Pair<Long, Long> pair : topK) {
+                long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
+                System.out.printf("Item %d True Frequency = %d Estimated Frequency with CM = %d\n",
+                        pair.getKey(), pair.getValue(), cm_freq);
+            }
         }
 
         /* USELESS for our purposes:
