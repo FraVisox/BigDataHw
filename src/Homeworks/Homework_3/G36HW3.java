@@ -13,18 +13,17 @@ import java.util.concurrent.Semaphore;
 
 public class G36HW3 {
 
-    // After how many items should we stop?
-    // public static final int THRESHOLD = 1000000;
-
+    // Prime number used in the following
     public static final int p = 8191;
+
+    // Hostname
+    public static final String hostname = "algo.dei.unipd.it";
 
     public static void main(String[] args) throws Exception {
         if (args.length != 5) {
             throw new IllegalArgumentException("USAGE: portExp threshold (T) number_of_rows (D) number_of_cols (W) number_of_top (K)");
         }
-        // IMPORTANT: the master must be set to "local[*]" or "local[n]" with n > 1, otherwise
-        // there will be no processor running the streaming computation and your
-        // code will crash with an out of memory (because the input keeps accumulating).
+
         SparkConf conf = new SparkConf(true)
                 .setMaster("local[*]") // remove this line if running on the cluster
                 .setAppName("DistinctExample");
@@ -55,15 +54,11 @@ public class G36HW3 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         int portExp = Integer.parseInt(args[0]);
-        //System.out.println("Receiving data from port = " + portExp);
         int THRESHOLD = Integer.parseInt(args[1]);
-        //System.out.println("Threshold = " + THRESHOLD);
         int D = Integer.parseInt(args[2]);
-        //System.out.println("Rows = " + THRESHOLD);
         int W = Integer.parseInt(args[3]);
-        //System.out.println("Columns = " + THRESHOLD);
         int K = Integer.parseInt(args[4]);
-        //System.out.println("Top elements = " + THRESHOLD);
+        System.out.printf("Port = %d T = %d D = %d W = %d K = %d\n", portExp, THRESHOLD, D, W, K);
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // DEFINING THE REQUIRED DATA STRUCTURES TO MAINTAIN THE STATE OF THE STREAM
@@ -84,6 +79,7 @@ public class G36HW3 {
         ArrayList<int[]> CS_h = new ArrayList<>(D);
         ArrayList<int[]> CS_g = new ArrayList<>(D);
 
+        // D functions of each type
         Random random = new Random(1);
         for (int i = 0; i<D; i++) {
             CM_h.add(generateHashFunction(random));
@@ -91,13 +87,18 @@ public class G36HW3 {
             CS_g.add(generateHashFunction(random));
         }
 
+        // Tables with counters
         long[][] counter_CM = new long[D][W];
         long[][] counter_CS = new long[D][W];
+
+        // Heap with top K hitters so far (to not compute them only at the end of the streaming, we keep them updated in a streaming fashion)
         PriorityQueue<Pair<Long, Long>> topKHeap = new PriorityQueue<>(K, Comparator.comparingLong(Pair::getValue));
 
-        // CODE TO PROCESS AN UNBOUNDED STREAM OF DATA IN BATCHES
-        sc.socketTextStream("algo.dei.unipd.it", portExp, StorageLevels.MEMORY_AND_DISK)
-			// For each batch, to the following.
+        // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+        // PROCESS THE STREAM
+        // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+        sc.socketTextStream(hostname, portExp, StorageLevels.MEMORY_AND_DISK)
+			// For each batch, do the following.
 			// BEWARE: the `foreachRDD` method has "at least once semantics", meaning
 			// that the same data might be processed multiple times in case of failure.
 			.foreachRDD((batch, time) -> {
@@ -106,12 +107,13 @@ public class G36HW3 {
 				long batchSize = batch.count();
 				streamLength[0] += batchSize;
 				if (batchSize == 0) return;
-				//System.out.println("Batch size at time [" + time + "] is: " + batchSize);
+
 				// Extract the distinct items from the batch
 				Map<Long, Long> batchItems = batch
 						.mapToPair(s -> new Tuple2<>(Long.parseLong(s), 1L))
-						.reduceByKey((i1, i2) -> i1 + i2)
+						.reduceByKey(Long::sum)
 						.collectAsMap();
+
 				// Update the streaming state. If the overall count of processed items reaches the
 				// THRESHOLD value (among all batches processed so far), subsequent items of the
 				// current batch are ignored, and no further batches will be processed
@@ -124,17 +126,24 @@ public class G36HW3 {
 
                     // Update the top-K Heavy Hitters
                     Pair<Long, Long> current = new ImmutablePair<>(x, histogram.get(x));
+
+                    //TODO: it's impossible it already contains it as it is, only the one that was before maybe
                     if (topKHeap.contains(current)) {
+                        //If it was already there
                         topKHeap.remove(current);
                         topKHeap.add(current);
                     } else if (topKHeap.size() < K) {
+                        //If we have less than K items
                         topKHeap.add(current);
                     } else if (topKHeap.peek().getValue() < current.getValue()) {
-                        topKHeap.poll();
+                        //If there are already K items
+                        topKHeap.remove(topKHeap.peek());
+                        topKHeap.add(current);
+                    } else if (topKHeap.peek().getValue().equals(current.getValue())) {
                         topKHeap.add(current);
                     }
 
-					// Count-min sketch
+					// Count-Min sketch and Count Sketch
 					for (int j = 0; j < D; j++) {
 						int i = hash(x, W, CM_h.get(j));
 						counter_CM[j][i] += count;
@@ -145,7 +154,6 @@ public class G36HW3 {
 					}
 				}
 
-				// If we wanted, here we could run some additional code on the global histogram
 				if (streamLength[0] >= THRESHOLD) {
 					// Stop receiving and processing further batches
 					stoppingSemaphore.release();
@@ -154,11 +162,8 @@ public class G36HW3 {
 			});
 
         // MANAGING STREAMING SPARK CONTEXT
-        //System.out.println("Starting streaming engine");
         sc.start();
-        //System.out.println("Waiting for shutdown condition");
         stoppingSemaphore.acquire();
-        //System.out.println("Stopping the streaming engine");
 
         /* The following command stops the execution of the stream. The first boolean, if true, also
            stops the SparkContext, while the second boolean, if true, stops gracefully by waiting for
@@ -168,26 +173,19 @@ public class G36HW3 {
         */
 
         sc.stop(false, true);
-        //System.out.println("Streaming engine stopped");
 
+        // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         // COMPUTE AND PRINT FINAL STATISTICS
-        //System.out.println("Number of items processed = " + streamLength[0]);
-        //System.out.println("Number of distinct items = " + histogram.size());
-        /* SORTING THE TOP-K HEAVY HITTERS AFTER THE STREAMING PROCESSING
-		ArrayList<Pair<Long, Long>> topK = new ArrayList<>();
-		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
-			topK.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
-		}
-		Collections.sort(topK, (o1, o2) -> o2.getValue().compareTo(o1.getValue()));
-        */
+        // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
         ArrayList<Pair<Long, Long>> topK = new ArrayList<>(topKHeap);
-        topK.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
+        System.out.println("Size of topK:"+topK.size());
+        //topK.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
 
-        long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
-		//System.out.println("Phi(K) = " + phi_K);
-		topK.removeIf(e -> e.getValue() < phi_K);
+        //long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
+		//topK.removeIf(e -> e.getValue() < phi_K);
 
-        topK.sort(Map.Entry.comparingByKey());
+        //topK.sort(Map.Entry.comparingByKey());
 
         double sumRelErrCM = 0.0;
         double sumRelErrCS = 0.0;
@@ -201,7 +199,6 @@ public class G36HW3 {
         double avgRelErrCM = sumRelErrCM / topK.size();
         double avgRelErrCS = sumRelErrCS / topK.size();
 
-        System.out.printf("Port = %d T = %d D = %d W = %d K = %d\n", portExp, THRESHOLD, D, W, K);
         System.out.printf("Number of processed items = %d\n", streamLength[0]);
         System.out.printf("Number of distinct items  = %d\n", histogram.size());
         System.out.printf("Number of Top-K Heavy Hitters = %d\n", topK.size());
@@ -210,19 +207,39 @@ public class G36HW3 {
 
         if (K <= 10) {
             System.out.println("Top-K Heavy Hitters:");
+            int i = 0;
             for (Pair<Long, Long> pair : topK) {
+                if (i == 10) break;
                 long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
                 System.out.printf("Item %d True Frequency = %d Estimated Frequency with CM = %d\n",
                         pair.getKey(), pair.getValue(), cm_freq);
+                i++;
             }
         }
 
-        /* USELESS for our purposes:
+        // Just to check TODO: remove
+        // SORTING THE TOP-K HEAVY HITTERS AFTER THE STREAMING PROCESSING
 
-        ArrayList<Long> distinctKeys = new ArrayList<>(histogram.keySet());
-        Collections.sort(distinctKeys, Collections.reverseOrder());
-        System.out.println("Largest item = " + distinctKeys.get(0));
-         */
+		ArrayList<Pair<Long, Long>> topppp = new ArrayList<>();
+		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
+            topppp.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
+		}
+		topppp.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
+
+        System.out.println("Size of topppp:"+topppp.size());
+
+        if (K <= 10) {
+            System.out.println("Top-K Heavy Hitters:");
+            int i = 0;
+            for (Pair<Long, Long> pair : topppp) {
+                if (i == 10)
+                    break;
+                long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
+                System.out.printf("Item %d True Frequency = %d Estimated Frequency with CM = %d\n",
+                        pair.getKey(), pair.getValue(), cm_freq);
+                i++;
+            }
+        }
     }
 
     // Estimates the frequency of the item x with CM
