@@ -121,26 +121,34 @@ public class G36HW3 {
 					long x = pair.getKey();
 					long count = pair.getValue();
 
-					// Exact frequencies
-					histogram.put(x, histogram.getOrDefault(x, 0L) + count);
+                    // Exact frequencies
+                    long prev_freq = histogram.getOrDefault(x,0L);
+                    histogram.put(x, prev_freq + count);
+                    long actualFreq = histogram.get(x);
 
-                    // Update the top-K Heavy Hitters
-                    Pair<Long, Long> current = new ImmutablePair<>(x, histogram.get(x));
+                    // Mantain top K heavy hitters
+                    Pair<Long, Long> newPair = new ImmutablePair<>(x, actualFreq);
+                    Pair<Long, Long> oldPair = new ImmutablePair<>(x, prev_freq);
 
-                    //TODO: it's impossible it already contains it as it is, only the one that was before maybe
-                    if (topKHeap.contains(current)) {
-                        //If it was already there
-                        topKHeap.remove(current);
-                        topKHeap.add(current);
-                    } else if (topKHeap.size() < K) {
-                        //If we have less than K items
-                        topKHeap.add(current);
-                    } else if (topKHeap.peek().getValue() < current.getValue()) {
-                        //If there are already K items
-                        topKHeap.remove(topKHeap.peek());
-                        topKHeap.add(current);
-                    } else if (topKHeap.peek().getValue().equals(current.getValue())) {
-                        topKHeap.add(current);
+                    // First, remove the old pair if it exists (for updates)
+                    topKHeap.remove(oldPair);
+
+                    // Now decide whether to add the new pair
+                    if (topKHeap.size() < K) {
+                        topKHeap.add(newPair);
+                    } else {
+                        // Smallest frequency in heap
+                        long minFreqInHeap = topKHeap.peek().getValue();
+
+                        if (newPair.getValue() > minFreqInHeap) {
+                            topKHeap.add(newPair);
+                            // Remove excess elements
+                            while (topKHeap.size() > K && topKHeap.peek().getValue() == minFreqInHeap) {
+                                topKHeap.poll();
+                            }
+                        } else if (newPair.getValue().equals(minFreqInHeap)) {
+                            topKHeap.add(newPair);
+                        }
                     }
 
 					// Count-Min sketch and Count Sketch
@@ -179,13 +187,8 @@ public class G36HW3 {
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
         ArrayList<Pair<Long, Long>> topK = new ArrayList<>(topKHeap);
-        System.out.println("Size of topK:"+topK.size());
-        //topK.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
-
-        //long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
-		//topK.removeIf(e -> e.getValue() < phi_K);
-
-        //topK.sort(Map.Entry.comparingByKey());
+        // Put them in the right order
+        topK.sort(Map.Entry.comparingByKey());
 
         double sumRelErrCM = 0.0;
         double sumRelErrCS = 0.0;
@@ -207,39 +210,13 @@ public class G36HW3 {
 
         if (K <= 10) {
             System.out.println("Top-K Heavy Hitters:");
-            int i = 0;
             for (Pair<Long, Long> pair : topK) {
-                if (i == 10) break;
                 long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
                 System.out.printf("Item %d True Frequency = %d Estimated Frequency with CM = %d\n",
                         pair.getKey(), pair.getValue(), cm_freq);
-                i++;
             }
         }
 
-        // Just to check TODO: remove
-        // SORTING THE TOP-K HEAVY HITTERS AFTER THE STREAMING PROCESSING
-
-		ArrayList<Pair<Long, Long>> topppp = new ArrayList<>();
-		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
-            topppp.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
-		}
-		topppp.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
-
-        System.out.println("Size of topppp:"+topppp.size());
-
-        if (K <= 10) {
-            System.out.println("Top-K Heavy Hitters:");
-            int i = 0;
-            for (Pair<Long, Long> pair : topppp) {
-                if (i == 10)
-                    break;
-                long cm_freq = estimateFrequencyCM(pair.getKey(), W, D, CM_h, counter_CM);
-                System.out.printf("Item %d True Frequency = %d Estimated Frequency with CM = %d\n",
-                        pair.getKey(), pair.getValue(), cm_freq);
-                i++;
-            }
-        }
     }
 
     // Estimates the frequency of the item x with CM
