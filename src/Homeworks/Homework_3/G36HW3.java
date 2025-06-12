@@ -173,15 +173,21 @@ public class G36HW3 {
         // COMPUTE AND PRINT FINAL STATISTICS
         //System.out.println("Number of items processed = " + streamLength[0]);
         //System.out.println("Number of distinct items = " + histogram.size());
-
+        /* SORTING THE TOP-K HEAVY HITTERS AFTER THE STREAMING PROCESSING
 		ArrayList<Pair<Long, Long>> topK = new ArrayList<>();
 		for (Map.Entry<Long, Long> entry : histogram.entrySet()) {
 			topK.add(new ImmutablePair<>(entry.getKey(), entry.getValue()));
 		}
 		Collections.sort(topK, (o1, o2) -> o2.getValue().compareTo(o1.getValue()));
-		long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
-		System.out.println("Phi(K) = " + phi_K);
+        */
+        ArrayList<Pair<Long, Long>> topK = new ArrayList<>(topKHeap);
+        topK.sort((o1, o2) -> o2.getValue().compareTo(o1.getValue()));
+
+        long phi_K = topK.get(Math.min(K, topK.size())-1).getValue();
+		//System.out.println("Phi(K) = " + phi_K);
 		topK.removeIf(e -> e.getValue() < phi_K);
+
+        topK.sort(Map.Entry.comparingByKey());
 
         double sumRelErrCM = 0.0;
         double sumRelErrCS = 0.0;
