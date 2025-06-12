@@ -92,6 +92,7 @@ public class G36HW3 {
         long[][] counter_CS = new long[D][W];
 
         // Heap with top K hitters so far (to not compute them only at the end of the streaming, we keep them updated in a streaming fashion)
+        // This is done to reduce complexity to O(NlogN) to O(NlogK), which is a great improvement considering that K is a lot smaller than N.
         PriorityQueue<Pair<Long, Long>> topKHeap = new PriorityQueue<>(K, Comparator.comparingLong(Pair::getValue));
 
         // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
