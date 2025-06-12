@@ -126,7 +126,7 @@ public class G36HW3 {
                     histogram.put(x, prev_freq + count);
                     long actualFreq = histogram.get(x);
 
-                    // Mantain top K heavy hitters
+                    // Maintain top K heavy hitters
                     Pair<Long, Long> newPair = new ImmutablePair<>(x, actualFreq);
                     Pair<Long, Long> oldPair = new ImmutablePair<>(x, prev_freq);
 
@@ -143,8 +143,12 @@ public class G36HW3 {
                         if (newPair.getValue() > minFreqInHeap) {
                             topKHeap.add(newPair);
                             // Remove excess elements
+                            ArrayList<Pair<Long,Long>> removed = new ArrayList<>();
                             while (topKHeap.size() > K && topKHeap.peek().getValue() == minFreqInHeap) {
-                                topKHeap.poll();
+                                removed.add(topKHeap.poll());
+                            }
+                            if (topKHeap.size() <= K && topKHeap.peek().getValue() == minFreqInHeap) {
+                                topKHeap.addAll(removed);
                             }
                         } else if (newPair.getValue().equals(minFreqInHeap)) {
                             topKHeap.add(newPair);
@@ -216,7 +220,6 @@ public class G36HW3 {
                         pair.getKey(), pair.getValue(), cm_freq);
             }
         }
-
     }
 
     // Estimates the frequency of the item x with CM
@@ -246,11 +249,12 @@ public class G36HW3 {
     private static int hash(long x, int C, int[] hashFunc) {
         int a = hashFunc[0];
         int b = hashFunc[1];
-        return ((int)((a*x+b)%p))%C;
+        long result = (a * x + b) % p;
+        return (int)(result % C);
     }
 
     private static int hashSign(long x, int[] hashFunc) {
-		return hash(x, 2, hashFunc) * 2 - 1;
+        return hash(x, 2, hashFunc) * 2 - 1;
     }
 
     private static int[] generateHashFunction(Random random) {
